@@ -68,6 +68,25 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 .chevron{display:inline-block;width:1em;color:#9a9490;transition:transform .15s}
 .sum-row.expanded .chevron{transform:rotate(90deg)}
 
+/* 個人明細 */
+.personal-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.personal-toolbar label{font-size:.85rem;font-weight:600;color:#6b6562;white-space:nowrap}
+.personal-staff-select{flex:1;min-width:180px;max-width:360px;border:2px solid #d8d2ce;border-radius:10px;padding:8px 12px;font-size:.88rem;font-family:inherit;background:#fff;color:#37322f}
+.personal-staff-select:focus{outline:2px solid #0f6e56;outline-offset:0}
+.personal-heading{font-size:.95rem;font-weight:700;margin-bottom:10px;line-height:1.6}
+.personal-heading .sub{font-size:.82rem;font-weight:600;color:#6b6562}
+.personal-detail-table{font-size:.8rem}
+.personal-detail-table thead th{position:static}
+.personal-detail-table .empty{color:#b5aea8}
+.personal-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:14px;padding-top:14px;border-top:2px solid #e8e4e1}
+.personal-totals .tot-item{text-align:center}
+.personal-totals .tot-val{font-size:1rem;font-weight:700;color:#0f6e56}
+.personal-totals .tot-lbl{font-size:.72rem;color:#6b6562;margin-top:2px}
+.personal-print-area{display:none}
+.personal-page{margin-bottom:24px}
+.personal-page-title{font-size:1rem;font-weight:700;margin-bottom:4px}
+.personal-page-sub{font-size:.85rem;color:#6b6562;margin-bottom:10px}
+
 /* 印刷用 */
 .print-title{display:none}
 @media print{
@@ -76,8 +95,12 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
   .header .header-actions,.tabs,.btn,.facility-filter,.period-nav button,.no-print{display:none!important}
   .header,.card{box-shadow:none;border-radius:0;padding:0}
   .tab-panel{display:none!important}
-  .tab-panel[data-tab="summary"].active{display:block!important}
-  .print-title{display:block!important;font-size:14pt;font-weight:700;margin-bottom:12px;text-align:center}
+  body:not(.print-personal) .tab-panel[data-tab="summary"].active{display:block!important}
+  body:not(.print-personal) .print-title{display:block!important;font-size:14pt;font-weight:700;margin-bottom:12px;text-align:center}
+  body.print-personal .personal-print-area{display:block!important}
+  body.print-personal .print-title{display:none!important}
+  .personal-page{page-break-after:always}
+  .personal-page:last-child{page-break-after:auto}
   .sum-row{cursor:default}
   .detail-row{display:none!important}
   table{font-size:9pt}
@@ -164,8 +187,40 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
   </div>
 
   <div class="tab-panel" data-tab="personal" id="panelPersonal">
-    <div class="card"><div class="status-msg">個人明細はタブ2の行展開で代替できます（優先度低）。</div></div>
+    <div class="card">
+      <div class="personal-toolbar no-print">
+        <label for="personalStaffSelect">スタッフ選択</label>
+        <select id="personalStaffSelect" class="personal-staff-select">
+          <option value="">— 選択してください —</option>
+        </select>
+      </div>
+      <div id="personalStatus" class="status-msg" style="display:none"></div>
+      <div id="personalContent" style="display:none">
+        <div class="personal-heading" id="personalHeading"></div>
+        <div class="table-wrap">
+          <table class="personal-detail-table" id="personalTable">
+            <thead>
+              <tr>
+                <th>日付</th>
+                <th>曜日</th>
+                <th>区分</th>
+                <th>シフト名</th>
+                <th>時間</th>
+                <th class="num">休憩</th>
+                <th class="num">実働</th>
+                <th class="num">残業</th>
+                <th>備考</th>
+              </tr>
+            </thead>
+            <tbody id="personalBody"></tbody>
+          </table>
+        </div>
+        <div class="personal-totals" id="personalTotals"></div>
+      </div>
+    </div>
   </div>
+
+  <div id="personalPrintArea" class="personal-print-area" aria-hidden="true"></div>
 </div>
 
 <script>
@@ -178,6 +233,7 @@ const JOB_LABELS = { kaigo: '介護職員', chori: '調理スタッフ', helper:
 const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
 const EXPORT_HEADERS = ['氏名', '所属', '職種', '出勤日数', '休出日数', '有休日数', '欠勤日数', '実働合計', '残業合計', '遅早回数', '有給残'];
+const PERSONAL_HEADERS = ['日付', '曜日', '区分', 'シフト名', '時間', '休憩', '実働', '残業', '備考'];
 
 /* ── マスタ（スタッフアプリ複製） ── */
 const shiftMaster = {
@@ -262,6 +318,192 @@ function fmtDateWithDow(dateStr) {
 const H = m => (Number(m) / 60).toFixed(1) + 'H';
 const Hnum = m => parseFloat((Number(m) / 60).toFixed(1));
 
+function fmtClock(min) {
+  const h = Math.floor(Number(min) / 60) % 24;
+  const m = Number(min) % 60;
+  return `${h}:${String(m).padStart(2, '0')}`;
+}
+
+function fmtTimeRange(start, end) {
+  if (start == null || end == null) return '—';
+  const s = Number(start);
+  const e = Number(end);
+  if (isNaN(s) || isNaN(e)) return '—';
+  if (e <= s) return `${fmtClock(s)}〜翌${fmtClock(e)}`;
+  return `${fmtClock(s)}〜${fmtClock(e)}`;
+}
+
+function fmtDurJa(min) {
+  const n = Number(min) || 0;
+  if (n <= 0) return '—';
+  const h = Math.floor(n / 60);
+  const m = n % 60;
+  if (h === 0) return `${m}分`;
+  if (m === 0) return `${h}h`;
+  return `${h}h${m}分`;
+}
+
+function periodDates(from, to) {
+  const dates = [];
+  let d = from;
+  while (d <= to) {
+    dates.push(d);
+    d = addDays(d, 1);
+  }
+  return dates;
+}
+
+function personalStatusLabel(rec) {
+  if (!rec) return '—';
+  if (rec.status === 'paid_leave') return '有給';
+  if (rec.status === 'absence') return '欠勤';
+  return '勤務';
+}
+
+function buildPersonalNote(rec) {
+  if (!rec) return '—';
+  const parts = [];
+  if (rec.lateFlag) {
+    parts.push('遅刻早退' + (rec.lateNote && String(rec.lateNote).trim() ? `：${rec.lateNote}` : ''));
+  }
+  if (rec.holidayWorkFlag) parts.push('休日出勤');
+  if (rec.status === 'absence') {
+    const reason = rec.absenceReason === 'sick' ? '病欠' : rec.absenceReason === 'other' ? 'その他' : '';
+    if (reason) parts.push(reason);
+    if (rec.absenceNote && String(rec.absenceNote).trim()) parts.push(String(rec.absenceNote).trim());
+  }
+  if (rec.memo && String(rec.memo).trim()) parts.push(String(rec.memo).trim());
+  return parts.length ? parts.join('／') : '—';
+}
+
+function fmtDateShort(dateStr) {
+  const [, m, d] = dateStr.split('-').map(Number);
+  return `${m}/${d}`;
+}
+
+function fmtDow(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return DOW_LABELS[new Date(y, m - 1, d).getDay()];
+}
+
+function buildPersonalDayRow(dateStr, rec) {
+  if (!rec) {
+    return {
+      date: fmtDateShort(dateStr),
+      dow: fmtDow(dateStr),
+      status: '—',
+      shift: '—',
+      time: '—',
+      brk: '—',
+      work: '—',
+      ot: '',
+      note: '—',
+      empty: true
+    };
+  }
+  return {
+    date: fmtDateShort(dateStr),
+    dow: fmtDow(dateStr),
+    status: personalStatusLabel(rec),
+    shift: rec.status === 'work' ? shiftLabel(rec.shiftKey) : '—',
+    time: rec.status === 'work' ? fmtTimeRange(rec.start, rec.end) : '—',
+    brk: rec.status === 'work' ? fmtDurJa(rec.breakMin) : '—',
+    work: rec.status === 'work' ? fmtDurJa(rec.workMin) : '—',
+    ot: rec.status === 'work' && Number(rec.overtimeMin) > 0 ? fmtDurJa(rec.overtimeMin) : '',
+    note: buildPersonalNote(rec),
+    empty: false
+  };
+}
+
+function buildPersonalDetailData(staff) {
+  const recs = recordsForStaff(staff.staffId);
+  const recMap = {};
+  recs.forEach(r => { if (r.date) recMap[r.date] = r; });
+  const rows = periodDates(period.from, period.to).map(d => buildPersonalDayRow(d, recMap[d]));
+  const agg = aggregateRecords(recs);
+  return { staff, rows, agg };
+}
+
+function personalHeadingHtml(staff) {
+  const job = JOB_LABELS[staff.jobType] || staff.jobType || '—';
+  return `${esc(staff.name)}（${esc(facilityLabel(staff.facilityId))}・${esc(job)}）<div class="sub">${esc(period.label)}（${esc(period.rangeLabel)}）</div>`;
+}
+
+function personalTotalsHtml(agg) {
+  return `
+    <div class="tot-item"><div class="tot-val">${agg.workDays}日</div><div class="tot-lbl">出勤日数</div></div>
+    <div class="tot-item"><div class="tot-val">${agg.holDays}日</div><div class="tot-lbl">休出日数</div></div>
+    <div class="tot-item"><div class="tot-val">${agg.paidDays}日</div><div class="tot-lbl">有休日数</div></div>
+    <div class="tot-item"><div class="tot-val">${agg.absDays}日</div><div class="tot-lbl">欠勤日数</div></div>
+    <div class="tot-item"><div class="tot-val">${fmtDurJa(agg.workMin)}</div><div class="tot-lbl">実働合計</div></div>
+    <div class="tot-item"><div class="tot-val">${agg.otMin > 0 ? fmtDurJa(agg.otMin) : '—'}</div><div class="tot-lbl">残業合計</div></div>`;
+}
+
+function personalTotalsText(agg) {
+  return `出勤日数:${agg.workDays} 休出日数:${agg.holDays} 有休日数:${agg.paidDays} 欠勤日数:${agg.absDays} 実働合計:${fmtDurJa(agg.workMin)} 残業合計:${agg.otMin > 0 ? fmtDurJa(agg.otMin) : '—'}`;
+}
+
+function personalRowToArray(row) {
+  return [row.date, row.dow, row.status, row.shift, row.time, row.brk, row.work, row.ot, row.note];
+}
+
+function buildPersonalTableBodyHtml(rows) {
+  return rows.map(row => {
+    const cls = row.empty ? ' class="empty"' : '';
+    return `<tr${cls}>
+      <td>${esc(row.date)}</td>
+      <td>${esc(row.dow)}</td>
+      <td>${esc(row.status)}</td>
+      <td>${esc(row.shift)}</td>
+      <td>${esc(row.time)}</td>
+      <td class="num">${esc(row.brk)}</td>
+      <td class="num">${esc(row.work)}</td>
+      <td class="num">${esc(row.ot)}</td>
+      <td>${esc(row.note)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function buildPersonalTableHtml(rows) {
+  return `<table class="personal-detail-table"><thead><tr>
+    ${PERSONAL_HEADERS.map(h => `<th${h === '休憩' || h === '実働' || h === '残業' ? ' class="num"' : ''}>${h}</th>`).join('')}
+  </tr></thead><tbody>${buildPersonalTableBodyHtml(rows)}</tbody></table>`;
+}
+
+function buildPersonalPrintBlock(staff, rows, agg) {
+  const job = JOB_LABELS[staff.jobType] || staff.jobType || '—';
+  return `<div class="personal-page">
+    <div class="personal-page-title">${esc(staff.name)}（${esc(facilityLabel(staff.facilityId))}・${esc(job)}）</div>
+    <div class="personal-page-sub">${esc(period.label)}（${esc(period.rangeLabel)}）</div>
+    ${buildPersonalTableHtml(rows)}
+    <div class="personal-totals">${personalTotalsHtml(agg)}</div>
+  </div>`;
+}
+
+function uniqueSheetName(name, used) {
+  let base = String(name || 'シート').replace(/[\\/?*[\]:]/g, '').slice(0, 28);
+  if (!base) base = 'シート';
+  let candidate = base;
+  let n = 2;
+  while (used.has(candidate)) {
+    const suffix = `_${n}`;
+    candidate = base.slice(0, 31 - suffix.length) + suffix;
+    n++;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function csvEscape(cell) {
+  const s = String(cell ?? '');
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function statusTag(rec) {
   if (rec.status === 'paid_leave') return { cls: 'tag-paid', text: '有給' };
   if (rec.status === 'absence') return { cls: 'tag-abs', text: '欠勤' };
@@ -338,6 +580,7 @@ async function fetchRecordsByStaff(staffId, from, to) {
 let period = getPeriod(todayStr());
 let facilityFilter = 'all';
 let activeTab = 'summary';
+let selectedPersonalStaffId = null;
 let staffMap = {};
 let periodRecords = [];
 let paidLeaveRecordsMap = {};
@@ -420,9 +663,11 @@ function renderHeader() {
       if (facilityFilter === fid) return;
       facilityFilter = fid;
       expandedStaffId = null;
+      selectedPersonalStaffId = null;
       renderHeader();
       renderSummary();
       renderToday();
+      renderPersonal();
       updatePrintTitle();
     });
     wrap.appendChild(btn);
@@ -432,7 +677,11 @@ function renderHeader() {
 }
 
 function updatePrintTitle() {
-  $('printTitle').textContent = `${period.label} 勤務集計表／${facilityFilterLabel()}`;
+  if (activeTab === 'personal') {
+    $('printTitle').textContent = `${period.label} 個人明細／${facilityFilterLabel()}`;
+  } else {
+    $('printTitle').textContent = `${period.label} 勤務集計表／${facilityFilterLabel()}`;
+  }
 }
 
 function renderTodayError(msg) {
@@ -597,14 +846,85 @@ function renderSummary() {
   });
 }
 
-function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function renderPersonalStaffSelect() {
+  const select = $('personalStaffSelect');
+  const staffList = filteredStaffList();
+  const prev = selectedPersonalStaffId;
+  select.innerHTML = '<option value="">— 選択してください —</option>';
+  staffList.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.staffId;
+    opt.textContent = s.name || s.staffId;
+    select.appendChild(opt);
+  });
+  if (prev && staffList.some(s => s.staffId === prev)) {
+    select.value = prev;
+  } else if (staffList.length) {
+    selectedPersonalStaffId = staffList[0].staffId;
+    select.value = selectedPersonalStaffId;
+  } else {
+    selectedPersonalStaffId = null;
+    select.value = '';
+  }
+}
+
+function renderPersonal() {
+  if (loadError) {
+    $('personalStatus').style.display = 'block';
+    $('personalStatus').className = 'status-msg error';
+    $('personalStatus').textContent = loadError;
+    $('personalContent').style.display = 'none';
+    return;
+  }
+  if (loading) {
+    $('personalStatus').style.display = 'block';
+    $('personalStatus').className = 'status-msg';
+    $('personalStatus').textContent = '読み込み中…';
+    $('personalContent').style.display = 'none';
+    return;
+  }
+
+  renderPersonalStaffSelect();
+
+  const staff = selectedPersonalStaffId ? staffMap[selectedPersonalStaffId] : null;
+  if (!staff) {
+    $('personalStatus').style.display = 'block';
+    $('personalStatus').className = 'status-msg';
+    $('personalStatus').textContent = filteredStaffList().length ? 'スタッフを選択してください' : '対象スタッフがありません';
+    $('personalContent').style.display = 'none';
+    return;
+  }
+
+  const { rows, agg } = buildPersonalDetailData(staff);
+  $('personalStatus').style.display = 'none';
+  $('personalContent').style.display = 'block';
+  $('personalHeading').innerHTML = personalHeadingHtml(staff);
+  $('personalBody').innerHTML = buildPersonalTableBodyHtml(rows);
+  $('personalTotals').innerHTML = personalTotalsHtml(agg);
+}
+
+function buildPersonalPrintArea() {
+  const staffList = filteredStaffList();
+  $('personalPrintArea').innerHTML = staffList.map(s => {
+    const { rows, agg } = buildPersonalDetailData(s);
+    return buildPersonalPrintBlock(s, rows, agg);
+  }).join('');
+}
+
+function buildPersonalExportList() {
+  return filteredStaffList().map(s => buildPersonalDetailData(s));
+}
+
+function personalExportFileName(ext) {
+  return `個人明細_${period.ym}.${ext}`;
 }
 
 function switchTab(tabId) {
   activeTab = tabId;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.tab === tabId));
+  updatePrintTitle();
+  if (tabId === 'personal') renderPersonal();
 }
 
 /* ── 出力 ── */
@@ -630,25 +950,47 @@ function exportFileName(ext) {
 
 function exportCsv() {
   if (loading || loadError) return;
+  if (activeTab === 'personal') {
+    exportPersonalCsv();
+    return;
+  }
   const rows = exportRows();
   if (!rows.length) return;
   const lines = [EXPORT_HEADERS.join(',')];
   rows.forEach(row => {
-    lines.push(row.map(cell => {
-      const s = String(cell ?? '');
-      if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-      return s;
-    }).join(','));
+    lines.push(row.map(cell => csvEscape(cell)).join(','));
   });
   const bom = '\uFEFF';
   const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   downloadBlob(blob, exportFileName('csv'));
 }
 
+function exportPersonalCsv() {
+  const list = buildPersonalExportList();
+  if (!list.length) return;
+  const lines = [];
+  list.forEach(({ staff, rows, agg }, i) => {
+    if (i > 0) lines.push('');
+    const job = JOB_LABELS[staff.jobType] || staff.jobType || '';
+    lines.push(['氏名', '事業所', '職種', '月度'].map(csvEscape).join(','));
+    lines.push([staff.name || '', facilityLabel(staff.facilityId), job, period.label].map(csvEscape).join(','));
+    lines.push(PERSONAL_HEADERS.map(csvEscape).join(','));
+    rows.forEach(row => lines.push(personalRowToArray(row).map(csvEscape).join(',')));
+    lines.push(['合計', '', '', '', '', '', '', '', personalTotalsText(agg)].map(csvEscape).join(','));
+  });
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  downloadBlob(blob, personalExportFileName('csv'));
+}
+
 function exportXlsx() {
   if (loading || loadError) return;
   if (typeof XLSX === 'undefined') {
     alert('Excel出力ライブラリの読み込みに失敗しました。ページを再読込してください。');
+    return;
+  }
+  if (activeTab === 'personal') {
+    exportPersonalXlsx();
     return;
   }
   const rows = exportRows();
@@ -678,6 +1020,62 @@ function exportXlsx() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '勤務集計');
   XLSX.writeFile(wb, exportFileName('xlsx'));
+}
+
+function exportPersonalXlsx() {
+  const list = buildPersonalExportList();
+  if (!list.length) return;
+  const wb = XLSX.utils.book_new();
+  const usedNames = new Set();
+
+  list.forEach(({ staff, rows, agg }) => {
+    const job = JOB_LABELS[staff.jobType] || staff.jobType || '';
+    const title = `${staff.name}（${facilityLabel(staff.facilityId)}・${job}）`;
+    const sub = `${period.label}（${period.rangeLabel}）`;
+    const aoa = [
+      [title],
+      [sub],
+      [],
+      PERSONAL_HEADERS,
+      ...rows.map(personalRowToArray),
+      [],
+      ['合計', '', '', '', '', '', '', '', personalTotalsText(agg)]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: PERSONAL_HEADERS.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: PERSONAL_HEADERS.length - 1 } }
+    ];
+    ws['!cols'] = PERSONAL_HEADERS.map((h, ci) => {
+      let max = h.length;
+      rows.forEach(r => {
+        const val = personalRowToArray(r)[ci];
+        const len = String(val ?? '').length;
+        if (len > max) max = len;
+      });
+      return { wch: Math.min(Math.max(max + 2, 6), 24) };
+    });
+    XLSX.utils.book_append_sheet(wb, ws, uniqueSheetName(staff.name, usedNames));
+  });
+
+  XLSX.writeFile(wb, personalExportFileName('xlsx'));
+}
+
+function doPrint() {
+  if (activeTab === 'personal') {
+    if (loading || loadError) return;
+    buildPersonalPrintArea();
+    document.body.classList.add('print-personal');
+    const cleanup = () => {
+      document.body.classList.remove('print-personal');
+      $('personalPrintArea').innerHTML = '';
+    };
+    window.addEventListener('afterprint', cleanup, { once: true });
+    window.print();
+    return;
+  }
+  document.body.classList.remove('print-personal');
+  window.print();
 }
 
 function downloadBlob(blob, filename) {
@@ -748,16 +1146,19 @@ async function loadData() {
     loading = false;
     renderSummary();
     renderToday();
+    renderPersonal();
   } catch (e) {
     loading = false;
     loadError = e.message || 'データの取得に失敗しました。';
     renderSummary();
+    renderPersonal();
   }
 }
 
 function changePeriod(delta) {
   period = delta < 0 ? prevPeriod(period) : nextPeriod(period);
   expandedStaffId = null;
+  selectedPersonalStaffId = null;
   renderHeader();
   loadData();
 }
@@ -771,7 +1172,12 @@ function init() {
   $('btnReload').addEventListener('click', () => { loadData(); loadTodayData(); });
   $('btnCsv').addEventListener('click', exportCsv);
   $('btnXlsx').addEventListener('click', exportXlsx);
-  $('btnPrint').addEventListener('click', () => window.print());
+  $('btnPrint').addEventListener('click', doPrint);
+
+  $('personalStaffSelect').addEventListener('change', () => {
+    selectedPersonalStaffId = $('personalStaffSelect').value || null;
+    renderPersonal();
+  });
 
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => switchTab(tab.dataset.tab));
