@@ -1,1 +1,503 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>スタッフ管理（出勤簿）</title>
+<style>
+  :root{
+    --fg:#1b2430; --muted:#5b6675; --line:#d7dde6; --bg:#f4f6f9;
+    --card:#ffffff; --accent:#1f6feb; --accent-d:#1858bf;
+    --ok:#197a3e; --okbg:#e6f4ec; --off:#9aa4b2; --offbg:#eef1f5;
+    --warn:#b23b3b; --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    color:var(--fg); background:var(--bg); font-size:17px; line-height:1.6;
+  }
+  header{
+    background:var(--card); border-bottom:1px solid var(--line);
+    padding:14px 16px; position:sticky; top:0; z-index:5;
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+  }
+  header h1{font-size:20px; margin:0; flex:1 1 auto;}
+  .wrap{max-width:980px; margin:0 auto; padding:16px;}
+  button{
+    font-size:16px; font-family:inherit; cursor:pointer; border-radius:10px;
+    border:1px solid var(--line); background:var(--card); color:var(--fg);
+    padding:12px 16px; min-height:48px;
+  }
+  button:focus-visible{outline:3px solid #9ec1ff; outline-offset:1px;}
+  .btn-primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600;}
+  .btn-primary:hover{background:var(--accent-d);}
+  .btn-lg{width:100%; font-size:18px; padding:14px;}
+  .row-actions button{padding:10px 14px; min-height:44px;}
+  .toolbar{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; align-items:center;}
+  .toolbar .grow{flex:1 1 auto;}
+  label.toggle{display:inline-flex; align-items:center; gap:8px; font-size:16px; color:var(--muted);}
+  /* list */
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    padding:14px 16px; margin-bottom:12px;
+  }
+  .staff-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .staff-name{font-size:19px; font-weight:700;}
+  .badge{font-size:13px; padding:3px 10px; border-radius:999px; font-weight:600;}
+  .badge-on{background:var(--okbg); color:var(--ok);}
+  .badge-off{background:var(--offbg); color:var(--off);}
+  .badge-admin{background:#eef0ff; color:#3a45c4;}
+  .staff-sub{color:var(--muted); font-size:15px; margin-top:4px;}
+  .row-actions{margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;}
+  .muted{color:var(--muted);}
+  .empty{text-align:center; color:var(--muted); padding:40px 10px;}
+  /* form modal */
+  .overlay{
+    position:fixed; inset:0; background:rgba(20,28,40,.45);
+    display:none; align-items:flex-start; justify-content:center; z-index:20; padding:16px;
+    overflow:auto;
+  }
+  .overlay.open{display:flex;}
+  .modal{
+    background:var(--card); border-radius:14px; width:100%; max-width:560px;
+    padding:20px; margin:24px 0;
+  }
+  .modal h2{margin:0 0 14px; font-size:20px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-weight:600; margin-bottom:6px;}
+  .field .hint{font-weight:400; color:var(--muted); font-size:14px;}
+  input[type=text],input[type=number],input[type=date],select{
+    width:100%; font-size:17px; font-family:inherit; padding:12px;
+    border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--fg);
+    min-height:48px;
+  }
+  input:focus,select:focus{outline:3px solid #9ec1ff; outline-offset:1px; border-color:var(--accent);}
+  input[readonly]{background:#f1f3f7; color:var(--muted);}
+  .switch{display:flex; align-items:center; gap:10px;}
+  .switch input{width:22px; height:22px;}
+  .form-err{color:var(--warn); font-size:15px; margin:6px 0 0; display:none;}
+  .form-err.show{display:block;}
+  .modal-actions{display:flex; gap:10px; margin-top:18px;}
+  .modal-actions button{flex:1;}
+  .status{font-size:15px; color:var(--muted); margin-left:auto;}
+  .loading{opacity:.5; pointer-events:none;}
+  @media (max-width:560px){
+    body{font-size:16px;}
+    header h1{font-size:18px; width:100%;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>スタッフ管理</h1>
+  <button id="btnReload">再読込</button>
+  <button id="btnExport">JSONバックアップ</button>
+  <button class="btn-primary" id="btnNew">＋ 新規登録</button>
+</header>
+
+<div class="wrap">
+  <div class="toolbar">
+    <span class="grow muted" id="count">読み込み中…</span>
+    <label class="toggle"><input type="checkbox" id="showRetired"> 退職者も表示</label>
+  </div>
+  <div id="list"></div>
+</div>
+
+<!-- 編集モーダル -->
+<div class="overlay" id="overlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 id="modalTitle">スタッフ編集</h2>
+
+    <div class="field">
+      <label for="f_staffId">WOFF社員ID（staffId）
+        <span class="hint" id="idHint">— 新規のみ入力可。本人がアプリで取得したIDを貼り付け</span>
+      </label>
+      <input type="text" id="f_staffId" autocomplete="off" placeholder="例: a1b2c3...">
+    </div>
+
+    <div class="field">
+      <label for="f_name">氏名</label>
+      <input type="text" id="f_name" autocomplete="off" placeholder="例: 山田 太郎">
+    </div>
+
+    <div class="field">
+      <label for="f_facility">事業所</label>
+      <select id="f_facility"></select>
+    </div>
+
+    <div class="field">
+      <label for="f_job">職種</label>
+      <select id="f_job"></select>
+    </div>
+
+    <div class="field">
+      <label for="f_shift">既定シフト <span class="hint">最初に選ばれるだけ（本人が変更可）</span></label>
+      <select id="f_shift"></select>
+    </div>
+
+    <div class="field">
+      <label for="f_role">権限</label>
+      <select id="f_role">
+        <option value="staff">staff（一般）</option>
+        <option value="admin">admin（本部）</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="f_workType">workType <span class="hint">表示ラベルのみ・空欄可</span></label>
+      <input type="text" id="f_workType" autocomplete="off" placeholder="例: A">
+    </div>
+
+    <div class="field">
+      <label for="f_balance">有給残（基準日時点）<span class="hint">空欄可</span></label>
+      <input type="number" id="f_balance" inputmode="numeric" step="0.5" min="0" placeholder="例: 12">
+    </div>
+
+    <div class="field">
+      <label for="f_asOf">有給の基準日 <span class="hint">残を入れたら必須</span></label>
+      <input type="date" id="f_asOf">
+    </div>
+
+    <div class="field">
+      <label class="switch"><input type="checkbox" id="f_active" checked> 在籍中（オフ＝退職）</label>
+    </div>
+
+    <div class="field" id="retiredWrap" style="display:none;">
+      <label for="f_retiredAt">退職日 <span class="hint">任意</span></label>
+      <input type="date" id="f_retiredAt">
+    </div>
+
+    <p class="form-err" id="formErr"></p>
+
+    <div class="modal-actions">
+      <button id="btnCancel">キャンセル</button>
+      <button class="btn-primary" id="btnSave">保存</button>
+    </div>
+    <p class="status" id="saveStatus"></p>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+ *  設定：GAS exec URL（※本部アプリの既存URLと同じものを使う）
+ *  デプロイし直してもURLは変わらない仕様。念のため一度照合を。
+ * ========================================================= */
+const GAS_URL = "https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec";
+
+/* =========================================================
+ *  マスタ：shiftMaster（両アプリ共通・HTML直書き）
+ *  施設・職種・既定シフトの選択肢はすべてここから生成する。
+ *  ※申し送り仕様書の16件と同一。増減時はここを直す。
+ * ========================================================= */
+const SHIFT_MASTER = [
+  {shiftKey:"nishi_kaigo_nikkin",  facilityId:"nishi",  jobType:"kaigo",    label:"日勤"},
+  {shiftKey:"nishi_kaigo_hankin",  facilityId:"nishi",  jobType:"kaigo",    label:"半勤"},
+  {shiftKey:"nishi_kaigo_chiban",  facilityId:"nishi",  jobType:"kaigo",    label:"遅番"},
+  {shiftKey:"nishi_kaigo_yakin",   facilityId:"nishi",  jobType:"kaigo",    label:"夜勤"},
+  {shiftKey:"nishi_chori_a",       facilityId:"nishi",  jobType:"chori",    label:"調理A"},
+  {shiftKey:"nishi_chori_b",       facilityId:"nishi",  jobType:"chori",    label:"調理B"},
+  {shiftKey:"minami_kaigo_nikkin", facilityId:"minami", jobType:"kaigo",    label:"日勤"},
+  {shiftKey:"minami_kaigo_hankin", facilityId:"minami", jobType:"kaigo",    label:"半勤"},
+  {shiftKey:"minami_kaigo_chiban", facilityId:"minami", jobType:"kaigo",    label:"遅番"},
+  {shiftKey:"minami_kaigo_yakin",  facilityId:"minami", jobType:"kaigo",    label:"夜勤"},
+  {shiftKey:"minami_chori_a",      facilityId:"minami", jobType:"chori",    label:"調理A"},
+  {shiftKey:"minami_chori_b",      facilityId:"minami", jobType:"chori",    label:"調理B"},
+  {shiftKey:"hibari_helper_normal",   facilityId:"hibari", jobType:"helper",   label:"通常"},
+  {shiftKey:"hibari_caremane_normal", facilityId:"hibari", jobType:"caremane", label:"通常"},
+  {shiftKey:"link_jimu_somu",      facilityId:"link",   jobType:"jimu",     label:"総務"},
+  {shiftKey:"link_jimu_part",      facilityId:"link",   jobType:"jimu",     label:"パート"}
+];
+const FACILITY_LABEL = {nishi:"おひさま西", minami:"南のおひさま", hibari:"ひばり", link:"リンク"};
+const JOB_LABEL = {kaigo:"介護職員", chori:"調理スタッフ", helper:"ヘルパー", caremane:"ケアマネージャー", jimu:"事務スタッフ"};
+
+/* shiftMaster から導出するヘルパー */
+function facilities(){
+  const seen = [];
+  SHIFT_MASTER.forEach(s=>{ if(!seen.includes(s.facilityId)) seen.push(s.facilityId); });
+  return seen;
+}
+function jobsOf(fac){
+  const seen = [];
+  SHIFT_MASTER.filter(s=>s.facilityId===fac).forEach(s=>{ if(!seen.includes(s.jobType)) seen.push(s.jobType); });
+  return seen;
+}
+function shiftsOf(fac, job){
+  return SHIFT_MASTER.filter(s=>s.facilityId===fac && s.jobType===job);
+}
+function shiftLabel(key){
+  const s = SHIFT_MASTER.find(x=>x.shiftKey===key);
+  return s ? s.label : (key||"—");
+}
+
+/* =========================================================
+ *  状態
+ * ========================================================= */
+let roster = [];          // staffMaster 全件
+let editingExisting = false;
+
+/* =========================================================
+ *  読み込み（doGet ?type=staffAll）
+ * ========================================================= */
+async function loadRoster(){
+  setCount("読み込み中…");
+  try{
+    const res = await fetch(GAS_URL + "?type=staffAll", {method:"GET"});
+    const data = await res.json();
+    if(!data || data.ok === false){ throw new Error(data && data.error || "取得に失敗しました"); }
+    roster = data.staff || [];
+    renderList();
+  }catch(err){
+    setCount("");
+    document.getElementById("list").innerHTML =
+      '<div class="empty">読み込みに失敗しました。<br>通信環境を確認して「再読込」を押してください。<br><span class="muted">'+escapeHtml(String(err))+'</span></div>';
+  }
+}
+
+/* =========================================================
+ *  一覧描画
+ * ========================================================= */
+function renderList(){
+  const showRetired = document.getElementById("showRetired").checked;
+  const list = document.getElementById("list");
+  let items = roster.slice().sort((a,b)=>{
+    // 在籍を上、次に事業所・氏名
+    if(a.active!==b.active) return a.active ? -1 : 1;
+    if(a.facilityId!==b.facilityId) return a.facilityId.localeCompare(b.facilityId);
+    return (a.name||"").localeCompare(b.name||"", "ja");
+  });
+  if(!showRetired) items = items.filter(s=>s.active);
+
+  const activeCount = roster.filter(s=>s.active).length;
+  setCount("在籍 " + activeCount + " 名 ／ 全 " + roster.length + " 名");
+
+  if(items.length===0){
+    list.innerHTML = '<div class="empty">表示できるスタッフがいません。<br>「＋ 新規登録」から追加してください。</div>';
+    return;
+  }
+  list.innerHTML = items.map(s=>{
+    const fac = FACILITY_LABEL[s.facilityId]||s.facilityId||"—";
+    const job = JOB_LABEL[s.jobType]||s.jobType||"—";
+    const shift = shiftLabel(s.defaultShiftKey);
+    const activeBadge = s.active
+      ? '<span class="badge badge-on">在籍</span>'
+      : '<span class="badge badge-off">退職'+(s.retiredAt?(' '+s.retiredAt):'')+'</span>';
+    const adminBadge = (s.role==="admin") ? '<span class="badge badge-admin">本部</span>' : '';
+    const bal = (s.paidLeaveBalance===null) ? "—" : s.paidLeaveBalance;
+    return ''
+      + '<div class="card">'
+      +   '<div class="staff-head">'
+      +     '<span class="staff-name">'+escapeHtml(s.name||"(氏名未設定)")+'</span>'
+      +     activeBadge + adminBadge
+      +   '</div>'
+      +   '<div class="staff-sub">'+fac+'・'+job+'／既定シフト：'+escapeHtml(shift)
+      +     '　有給残：'+bal+(s.paidLeaveAsOf?('（'+s.paidLeaveAsOf+'時点）'):'')+'</div>'
+      +   '<div class="staff-sub muted">ID：'+escapeHtml(s.staffId)+'</div>'
+      +   '<div class="row-actions">'
+      +     '<button data-edit="'+escapeAttr(s.staffId)+'">編集</button>'
+      +   '</div>'
+      + '</div>';
+  }).join("");
+
+  list.querySelectorAll("[data-edit]").forEach(btn=>{
+    btn.addEventListener("click", ()=> openEdit(btn.getAttribute("data-edit")));
+  });
+}
+
+/* =========================================================
+ *  フォーム：選択肢の組み立て（カスケード）
+ * ========================================================= */
+function fillFacilities(selected){
+  const sel = document.getElementById("f_facility");
+  sel.innerHTML = '<option value="">選択してください</option>' +
+    facilities().map(f=>'<option value="'+f+'">'+(FACILITY_LABEL[f]||f)+'</option>').join("");
+  sel.value = selected || "";
+}
+function fillJobs(fac, selected){
+  const sel = document.getElementById("f_job");
+  const jobs = fac ? jobsOf(fac) : [];
+  sel.innerHTML = '<option value="">選択してください</option>' +
+    jobs.map(j=>'<option value="'+j+'">'+(JOB_LABEL[j]||j)+'</option>').join("");
+  sel.value = (selected && jobs.includes(selected)) ? selected : "";
+}
+function fillShifts(fac, job, selected){
+  const sel = document.getElementById("f_shift");
+  const shifts = (fac && job) ? shiftsOf(fac, job) : [];
+  sel.innerHTML = '<option value="">選択してください</option>' +
+    shifts.map(s=>'<option value="'+s.shiftKey+'">'+s.label+'</option>').join("");
+  sel.value = (selected && shifts.some(s=>s.shiftKey===selected)) ? selected : "";
+}
+
+/* =========================================================
+ *  フォームを開く（新規／編集）
+ * ========================================================= */
+function openNew(){
+  editingExisting = false;
+  document.getElementById("modalTitle").textContent = "新規スタッフ登録";
+  document.getElementById("idHint").textContent = "— 本人がアプリで取得したIDを貼り付け";
+  const id = document.getElementById("f_staffId");
+  id.value = ""; id.readOnly = false;
+  document.getElementById("f_name").value = "";
+  fillFacilities("");
+  fillJobs("", "");
+  fillShifts("", "", "");
+  document.getElementById("f_role").value = "staff";
+  document.getElementById("f_workType").value = "";
+  document.getElementById("f_balance").value = "";
+  document.getElementById("f_asOf").value = "";
+  document.getElementById("f_active").checked = true;
+  document.getElementById("f_retiredAt").value = "";
+  syncRetiredVisibility();
+  clearFormErr();
+  document.getElementById("saveStatus").textContent = "";
+  openOverlay();
+}
+function openEdit(staffId){
+  const s = roster.find(x=>x.staffId===staffId);
+  if(!s) return;
+  editingExisting = true;
+  document.getElementById("modalTitle").textContent = "スタッフ編集";
+  document.getElementById("idHint").textContent = "— 既存のため変更不可（別人化を防ぐため）";
+  const id = document.getElementById("f_staffId");
+  id.value = s.staffId; id.readOnly = true;
+  document.getElementById("f_name").value = s.name||"";
+  fillFacilities(s.facilityId);
+  fillJobs(s.facilityId, s.jobType);
+  fillShifts(s.facilityId, s.jobType, s.defaultShiftKey);
+  document.getElementById("f_role").value = (s.role==="admin")?"admin":"staff";
+  document.getElementById("f_workType").value = s.workType||"";
+  document.getElementById("f_balance").value = (s.paidLeaveBalance===null)?"":s.paidLeaveBalance;
+  document.getElementById("f_asOf").value = s.paidLeaveAsOf||"";
+  document.getElementById("f_active").checked = !!s.active;
+  document.getElementById("f_retiredAt").value = s.retiredAt||"";
+  syncRetiredVisibility();
+  clearFormErr();
+  document.getElementById("saveStatus").textContent = "";
+  openOverlay();
+}
+
+/* =========================================================
+ *  バリデーション＆保存
+ * ========================================================= */
+function validate(){
+  const v = readForm();
+  if(!v.staffId) return "WOFF社員ID（staffId）を入力してください。";
+  if(!v.name)    return "氏名を入力してください。";
+  if(!v.facilityId) return "事業所を選んでください。";
+  if(!v.jobType)    return "職種を選んでください。";
+  if(!v.defaultShiftKey) return "既定シフトを選んでください。";
+  // 既定シフトが 施設×職種 に属するか最終チェック
+  if(!shiftsOf(v.facilityId, v.jobType).some(s=>s.shiftKey===v.defaultShiftKey)){
+    return "既定シフトが事業所・職種と一致していません。選び直してください。";
+  }
+  // 有給残を入れたら基準日必須（有給残の計算に基準日を使うため）
+  if(v.paidLeaveBalance!==null && !v.paidLeaveAsOf){
+    return "有給残を入れたときは「有給の基準日」も必須です。";
+  }
+  // 新規でIDが既存と重複していないか
+  if(!editingExisting && roster.some(s=>s.staffId===v.staffId)){
+    return "このIDは既に登録済みです（重複登録はできません）。";
+  }
+  return null;
+}
+function readForm(){
+  const balRaw = document.getElementById("f_balance").value.trim();
+  return {
+    staffId: document.getElementById("f_staffId").value.trim(),
+    name: document.getElementById("f_name").value.trim(),
+    facilityId: document.getElementById("f_facility").value,
+    jobType: document.getElementById("f_job").value,
+    workType: document.getElementById("f_workType").value.trim(),
+    defaultShiftKey: document.getElementById("f_shift").value,
+    role: document.getElementById("f_role").value,
+    active: document.getElementById("f_active").checked,
+    paidLeaveBalance: balRaw==="" ? null : Number(balRaw),
+    paidLeaveAsOf: document.getElementById("f_asOf").value || "",
+    retiredAt: document.getElementById("f_retiredAt").value || ""
+  };
+}
+async function save(){
+  const err = validate();
+  if(err){ showFormErr(err); return; }
+  clearFormErr();
+  const staff = readForm();
+
+  const modal = document.querySelector(".modal");
+  const status = document.getElementById("saveStatus");
+  modal.classList.add("loading");
+  status.textContent = "保存中…";
+  try{
+    // CORS回避：text/plain で送る（GAS側は JSON.parse で受ける）
+    const res = await fetch(GAS_URL, {
+      method:"POST",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body: JSON.stringify({ type:"staff", staff: staff })
+    });
+    const data = await res.json();
+    if(!data || data.ok===false){ throw new Error(data && data.error || "保存に失敗しました"); }
+    // ローカルの roster も更新（再読込せず即反映）
+    const idx = roster.findIndex(s=>s.staffId===staff.staffId);
+    if(idx>=0) roster[idx] = staff; else roster.push(staff);
+    modal.classList.remove("loading");
+    closeOverlay();
+    renderList();
+  }catch(e){
+    modal.classList.remove("loading");
+    status.textContent = "";
+    showFormErr("保存に失敗しました：" + String(e) + "（通信を確認して再度お試しください）");
+  }
+}
+
+/* =========================================================
+ *  JSONバックアップ（手動エクスポート）
+ * ========================================================= */
+function exportJson(){
+  const blob = new Blob([JSON.stringify({exportedAt:new Date().toISOString(), staff:roster}, null, 2)],
+                        {type:"application/json"});
+  const a = document.createElement("a");
+  const ymd = new Date().toISOString().slice(0,10);
+  a.href = URL.createObjectURL(blob);
+  a.download = "staffMaster_backup_" + ymd + ".json";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+}
+
+/* =========================================================
+ *  小物
+ * ========================================================= */
+function setCount(t){ document.getElementById("count").textContent = t; }
+function openOverlay(){ document.getElementById("overlay").classList.add("open"); }
+function closeOverlay(){ document.getElementById("overlay").classList.remove("open"); }
+function showFormErr(msg){ const el=document.getElementById("formErr"); el.textContent=msg; el.classList.add("show"); }
+function clearFormErr(){ const el=document.getElementById("formErr"); el.textContent=""; el.classList.remove("show"); }
+function syncRetiredVisibility(){
+  const active = document.getElementById("f_active").checked;
+  document.getElementById("retiredWrap").style.display = active ? "none" : "block";
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escapeAttr(s){ return escapeHtml(s); }
+
+/* =========================================================
+ *  イベント
+ * ========================================================= */
+document.getElementById("f_facility").addEventListener("change", e=>{
+  fillJobs(e.target.value, "");
+  fillShifts(e.target.value, "", "");
+});
+document.getElementById("f_job").addEventListener("change", e=>{
+  fillShifts(document.getElementById("f_facility").value, e.target.value, "");
+});
+document.getElementById("f_active").addEventListener("change", syncRetiredVisibility);
+document.getElementById("btnNew").addEventListener("click", openNew);
+document.getElementById("btnReload").addEventListener("click", loadRoster);
+document.getElementById("btnExport").addEventListener("click", exportJson);
+document.getElementById("btnCancel").addEventListener("click", closeOverlay);
+document.getElementById("btnSave").addEventListener("click", save);
+document.getElementById("showRetired").addEventListener("change", renderList);
+document.getElementById("overlay").addEventListener("click", e=>{ if(e.target.id==="overlay") closeOverlay(); });
+
+/* 起動 */
+loadRoster();
+</script>
+</body>
+</html>
 
