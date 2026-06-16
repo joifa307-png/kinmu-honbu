@@ -152,6 +152,11 @@
     </div>
 
     <div class="field">
+      <label for="f_approver">承認者 <span class="hint">有給申請の通知先。最上位は『なし』</span></label>
+      <select id="f_approver"></select>
+    </div>
+
+    <div class="field">
       <label for="f_workType">workType <span class="hint">表示ラベルのみ・空欄可</span></label>
       <input type="text" id="f_workType" autocomplete="off" placeholder="例: A">
     </div>
@@ -255,6 +260,11 @@ function findStaff(staffId) {
   const key = normStaffId(staffId);
   return roster.find(s => normStaffId(s.staffId) === key);
 }
+function approverName(approverId) {
+  if (!approverId) return "";
+  const a = findStaff(approverId);
+  return a ? (a.name || a.staffId) : "";
+}
 
 /* =========================================================
  *  読み込み（doGet ?type=staffAll）
@@ -306,6 +316,8 @@ function renderList(){
       : '<span class="badge badge-off">退職'+(s.retiredAt?(' '+s.retiredAt):'')+'</span>';
     const adminBadge = (s.role==="admin") ? '<span class="badge badge-admin">本部</span>' : '';
     const bal = (s.paidLeaveBalance===null) ? "—" : s.paidLeaveBalance;
+    const approver = approverName(s.approverId);
+    const approverLine = approver ? '　承認者：'+escapeHtml(approver) : '';
     return ''
       + '<div class="card">'
       +   '<div class="card-main">'
@@ -314,7 +326,7 @@ function renderList(){
       +       activeBadge + adminBadge
       +     '</div>'
       +     '<div class="staff-sub">'+fac+'・'+job+'／'+escapeHtml(shift)
-      +       '　有給残：'+bal+(s.paidLeaveAsOf?('（'+s.paidLeaveAsOf+'）'):'')+'</div>'
+      +       '　有給残：'+bal+(s.paidLeaveAsOf?('（'+s.paidLeaveAsOf+'）'):'')+approverLine+'</div>'
       +   '</div>'
       +   '<div class="row-actions">'
       +     '<button type="button" class="edit-btn" data-edit="'+escapeAttr(normStaffId(s.staffId))+'">編集</button>'
@@ -354,6 +366,17 @@ function fillShifts(fac, job, selected){
     shifts.map(s=>'<option value="'+s.shiftKey+'">'+s.label+'</option>').join("");
   sel.value = (selected && shifts.some(s=>s.shiftKey===selected)) ? selected : "";
 }
+function fillApprovers(excludeStaffId, selectedApproverId){
+  const sel = document.getElementById("f_approver");
+  const exclude = normStaffId(excludeStaffId);
+  const admins = roster
+    .filter(s => s.role === "admin" && s.active === true && normStaffId(s.staffId) !== exclude)
+    .sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja"));
+  sel.innerHTML = '<option value="">なし（最上位）</option>' +
+    admins.map(s => '<option value="'+escapeAttr(normStaffId(s.staffId))+'">'+escapeHtml(s.name || s.staffId)+'</option>').join("");
+  const selected = normStaffId(selectedApproverId);
+  sel.value = (selected && admins.some(s => normStaffId(s.staffId) === selected)) ? selected : "";
+}
 
 /* =========================================================
  *  フォームを開く（新規／編集）
@@ -372,6 +395,7 @@ function openNew(){
   fillJobs("", "");
   fillShifts("", "", "");
   document.getElementById("f_role").value = "staff";
+  fillApprovers("", "");
   document.getElementById("f_workType").value = "";
   document.getElementById("f_balance").value = "";
   document.getElementById("f_asOf").value = "";
@@ -398,6 +422,7 @@ function openEdit(staffId){
   fillJobs(s.facilityId, s.jobType);
   fillShifts(s.facilityId, s.jobType, s.defaultShiftKey);
   document.getElementById("f_role").value = (s.role==="admin")?"admin":"staff";
+  fillApprovers(s.staffId, s.approverId);
   document.getElementById("f_workType").value = s.workType||"";
   document.getElementById("f_balance").value = (s.paidLeaveBalance===null)?"":s.paidLeaveBalance;
   document.getElementById("f_asOf").value = s.paidLeaveAsOf||"";
@@ -447,6 +472,7 @@ function readForm(){
     workType: document.getElementById("f_workType").value.trim(),
     defaultShiftKey: document.getElementById("f_shift").value,
     role: document.getElementById("f_role").value,
+    approverId: document.getElementById("f_approver").value,
     active: document.getElementById("f_active").checked,
     paidLeaveBalance: balRaw==="" ? null : Number(balRaw),
     paidLeaveAsOf: document.getElementById("f_asOf").value || "",
