@@ -53,6 +53,13 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 .note-mark{color:#854f0b;font-weight:700;margin-right:4px}
 .today-count{font-size:.9rem;font-weight:600;color:#0f6e56;margin-bottom:12px}
 .today-count span{font-size:1.05rem}
+.dup-alert{background:#fcebeb;border:2px solid #e8b4b4;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:.85rem;color:#a32d2d}
+.dup-alert-title{font-weight:700;margin-bottom:6px}
+.dup-alert ul{margin:0;padding-left:1.2em}
+.dup-alert li{margin:3px 0;line-height:1.5}
+.dup-row,.dup-row td{color:#a32d2d!important;font-weight:600}
+.detail-table tr.dup-row td{color:#a32d2d!important;font-weight:600}
+.dup-mark{color:#a32d2d;font-weight:700;margin-right:4px}
 
 /* 行展開明細 */
 .detail-row td{padding:0;border-bottom:1px solid #e8e4e1;background:#faf9f8}
@@ -139,6 +146,7 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
   <div class="tab-panel" data-tab="today" id="panelToday">
     <div class="card">
       <div class="today-count" id="todayCount" style="display:none"></div>
+      <div id="todayDupAlert" style="display:none"></div>
       <div id="todayStatus" class="status-msg">読み込み中…</div>
       <div class="table-wrap" id="todayTableWrap" style="display:none">
         <table id="todayTable">
@@ -161,6 +169,7 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
   <div class="tab-panel active" data-tab="summary" id="panelSummary">
     <div class="card">
+      <div id="summaryDupAlert" style="display:none"></div>
       <div id="summaryStatus" class="status-msg">読み込み中…</div>
       <div class="table-wrap" id="summaryTableWrap" style="display:none">
         <table id="summaryTable">
@@ -257,6 +266,87 @@ const shiftMaster = {
 
 function shiftLabel(shiftKey) {
   return (shiftKey && shiftMaster[shiftKey]) ? shiftMaster[shiftKey].label : (shiftKey || '—');
+}
+
+/** おひさま西・南のおひさま：1日1名のはずのシフト（重複チェック対象） */
+const WATCH_SHIFT_KEYS = new Set([
+  'nishi_kaigo_chiban', 'nishi_kaigo_yakin', 'nishi_chori_a', 'nishi_chori_b',
+  'minami_kaigo_chiban', 'minami_kaigo_yakin', 'minami_chori_a', 'minami_chori_b'
+]);
+const WATCH_FACILITIES = ['nishi', 'minami'];
+
+function shiftFacility(shiftKey) {
+  return shiftMaster[shiftKey]?.facilityId || '';
+}
+
+function staffById(staffId) {
+  return staffMap[staffId] || staffMap[String(staffId)] || null;
+}
+
+function staffName(staffId) {
+  const s = staffById(staffId);
+  return s?.name || staffId || '—';
+}
+
+function recKey(rec) {
+  return `${rec.date}_${rec.staffId}`;
+}
+
+function detectShiftDuplicates(records) {
+  const dupRecordKeys = new Set();
+  const alerts = [];
+  const buckets = {};
+
+  records.forEach(rec => {
+    if (rec.status !== 'work' || !rec.date || !rec.shiftKey) return;
+    if (!WATCH_SHIFT_KEYS.has(rec.shiftKey)) return;
+    const key = `${rec.date}|${rec.shiftKey}`;
+    if (!buckets[key]) buckets[key] = [];
+    buckets[key].push(rec);
+  });
+
+  Object.keys(buckets).sort().forEach(key => {
+    const group = buckets[key];
+    if (group.length <= 1) return;
+    const [date, shiftKey] = key.split('|');
+    const facilityId = shiftFacility(shiftKey);
+    group.forEach(r => dupRecordKeys.add(recKey(r)));
+    alerts.push({
+      date,
+      facilityId,
+      shiftKey,
+      shiftLabel: shiftLabel(shiftKey),
+      count: group.length,
+      names: group.map(r => staffName(r.staffId))
+    });
+  });
+
+  alerts.sort((a, b) => a.date.localeCompare(b.date) || a.facilityId.localeCompare(b.facilityId));
+  return { dupRecordKeys, alerts };
+}
+
+function filterDupAlerts(alerts) {
+  if (facilityFilter === 'all') return alerts.filter(a => WATCH_FACILITIES.includes(a.facilityId));
+  return alerts.filter(a => a.facilityId === facilityFilter);
+}
+
+function renderDupAlert(elId, alerts) {
+  const el = $(elId);
+  const filtered = filterDupAlerts(alerts);
+  if (!filtered.length) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  const lines = filtered.map(a =>
+    `${fmtDateWithDow(a.date)} ${facilityLabel(a.facilityId)}：${a.shiftLabel} ${a.count}名（${a.names.map(n => esc(n)).join('、')}）`
+  );
+  el.style.display = 'block';
+  el.innerHTML = `<div class="dup-alert"><div class="dup-alert-title">⚠ シフト重複（入力ミスの可能性）</div><ul>${lines.map(l => `<li>${l}</li>`).join('')}</ul></div>`;
+}
+
+function isDupRecord(rec, dupRecordKeys) {
+  return dupRecordKeys.has(recKey(rec));
 }
 
 /* ── 締め期間（月度） ── */
@@ -686,6 +776,8 @@ function updatePrintTitle() {
 
 function renderTodayError(msg) {
   $('todayCount').style.display = 'none';
+  $('todayDupAlert').style.display = 'none';
+  $('todayDupAlert').innerHTML = '';
   $('todayStatus').style.display = 'block';
   $('todayStatus').className = 'status-msg error';
   $('todayStatus').innerHTML = `${msg}<br><button type="button" class="retry-btn" id="todayRetryBtn">再読込</button>`;
@@ -700,6 +792,8 @@ function renderToday() {
   }
   if (todayLoading) {
     $('todayCount').style.display = 'none';
+    $('todayDupAlert').style.display = 'none';
+    $('todayDupAlert').innerHTML = '';
     $('todayStatus').style.display = 'block';
     $('todayStatus').className = 'status-msg';
     $('todayStatus').textContent = '読み込み中…';
@@ -708,8 +802,11 @@ function renderToday() {
   }
 
   const rows = buildTodayRows();
+  const { dupRecordKeys, alerts } = detectShiftDuplicates(todayRecords);
+
   if (!rows.length) {
     $('todayCount').style.display = 'none';
+    renderDupAlert('todayDupAlert', alerts);
     $('todayStatus').style.display = 'block';
     $('todayStatus').className = 'status-msg';
     $('todayStatus').textContent = '本日の登録はまだありません';
@@ -719,6 +816,7 @@ function renderToday() {
 
   $('todayCount').style.display = 'block';
   $('todayCount').innerHTML = `本日 <span>${rows.length}</span>名登録`;
+  renderDupAlert('todayDupAlert', alerts);
   $('todayStatus').style.display = 'none';
   $('todayTableWrap').style.display = 'block';
 
@@ -735,6 +833,7 @@ function renderToday() {
     const noteMark = memo ? '<span class="note-mark" title="特記事項あり">●</span>' : '';
 
     const tr = document.createElement('tr');
+    if (isDupRecord(rec, dupRecordKeys)) tr.className = 'dup-row';
     tr.innerHTML = `
       <td>${noteMark}${esc(name)}</td>
       <td>${esc(facility)}</td>
@@ -749,6 +848,8 @@ function renderToday() {
 }
 
 function renderSummaryError(msg) {
+  $('summaryDupAlert').style.display = 'none';
+  $('summaryDupAlert').innerHTML = '';
   $('summaryStatus').style.display = 'block';
   $('summaryStatus').className = 'status-msg error';
   $('summaryStatus').innerHTML = `${msg}<br><button type="button" class="retry-btn" id="retryBtn">再読込</button>`;
@@ -762,6 +863,8 @@ function renderSummary() {
     return;
   }
   if (loading) {
+    $('summaryDupAlert').style.display = 'none';
+    $('summaryDupAlert').innerHTML = '';
     $('summaryStatus').style.display = 'block';
     $('summaryStatus').className = 'status-msg';
     $('summaryStatus').textContent = '読み込み中…';
@@ -770,6 +873,9 @@ function renderSummary() {
   }
 
   const rows = buildSummaryRows();
+  const { dupRecordKeys, alerts } = detectShiftDuplicates(periodRecords);
+  renderDupAlert('summaryDupAlert', alerts);
+
   if (!rows.length) {
     $('summaryStatus').style.display = 'block';
     $('summaryStatus').className = 'status-msg';
@@ -790,7 +896,9 @@ function renderSummary() {
     tr.dataset.staffId = staff.staffId;
 
     const paidDisplay = paidRemain === null ? '—' : String(paidRemain);
-    const noteMark = agg.hasMemo ? '<span class="note-mark" title="特記事項あり">●</span>' : '';
+    const hasDup = recs.some(r => isDupRecord(r, dupRecordKeys));
+    let noteMark = agg.hasMemo ? '<span class="note-mark" title="特記事項あり">●</span>' : '';
+    if (hasDup) noteMark += '<span class="dup-mark" title="シフト重複あり">⚠</span>';
 
     tr.innerHTML = `
       <td><span class="chevron">›</span></td>
@@ -829,7 +937,8 @@ function renderSummary() {
           const work = rec.status === 'work' ? H(rec.workMin) : '—';
           const ot = rec.status === 'work' && Number(rec.overtimeMin) > 0 ? H(rec.overtimeMin) : '—';
           const memo = rec.memo && String(rec.memo).trim() ? esc(rec.memo) : '';
-          detailHtml += `<tr>
+          const dupCls = isDupRecord(rec, dupRecordKeys) ? ' class="dup-row"' : '';
+          detailHtml += `<tr${dupCls}>
             <td>${fmtDateWithDow(rec.date)}</td>
             <td><span class="tag ${tag.cls}">${tag.text}</span></td>
             <td>${shift}</td>
