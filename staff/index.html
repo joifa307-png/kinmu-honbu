@@ -35,20 +35,24 @@
   .row-actions button{padding:10px 14px; min-height:44px;}
   .toolbar{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; align-items:center;}
   .toolbar .grow{flex:1 1 auto;}
+  .toolbar select{width:auto; min-height:44px; font-size:15px; font-family:inherit; padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--fg);}
   label.toggle{display:inline-flex; align-items:center; gap:8px; font-size:16px; color:var(--muted);}
   /* list */
   .card{
     background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
-    padding:14px 16px; margin-bottom:12px;
+    padding:10px 14px; margin-bottom:10px;
+    display:flex; align-items:center; gap:12px;
   }
-  .staff-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
-  .staff-name{font-size:19px; font-weight:700;}
-  .badge{font-size:13px; padding:3px 10px; border-radius:999px; font-weight:600;}
+  .card-main{flex:1 1 auto; min-width:0;}
+  .staff-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .staff-name{font-size:17px; font-weight:700;}
+  .badge{font-size:12px; padding:2px 9px; border-radius:999px; font-weight:600;}
   .badge-on{background:var(--okbg); color:var(--ok);}
   .badge-off{background:var(--offbg); color:var(--off);}
   .badge-admin{background:#eef0ff; color:#3a45c4;}
-  .staff-sub{color:var(--muted); font-size:15px; margin-top:4px;}
-  .row-actions{margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;}
+  .staff-sub{color:var(--muted); font-size:14px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .edit-btn{flex:0 0 auto; padding:10px 18px; min-height:44px; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:10px; font-size:15px; cursor:pointer; font-family:inherit;}
+  .edit-btn:hover{background:#f1f3f7;}
   .muted{color:var(--muted);}
   .empty{text-align:center; color:var(--muted); padding:40px 10px;}
   /* form modal */
@@ -97,6 +101,7 @@
 
 <div class="wrap">
   <div class="toolbar">
+    <select id="facilityFilter"><option value="">すべての事業所</option></select>
     <span class="grow muted" id="count">読み込み中…</span>
     <label class="toggle"><input type="checkbox" id="showRetired"> 退職者も表示</label>
   </div>
@@ -258,6 +263,7 @@ async function loadRoster(){
  * ========================================================= */
 function renderList(){
   const showRetired = document.getElementById("showRetired").checked;
+  const facFilter = document.getElementById("facilityFilter").value; // "" = すべて
   const list = document.getElementById("list");
   let items = roster.slice().sort((a,b)=>{
     // 在籍を上、次に事業所・氏名
@@ -266,6 +272,7 @@ function renderList(){
     return (a.name||"").localeCompare(b.name||"", "ja");
   });
   if(!showRetired) items = items.filter(s=>s.active);
+  if(facFilter)    items = items.filter(s=>s.facilityId===facFilter);
 
   const activeCount = roster.filter(s=>s.active).length;
   setCount("在籍 " + activeCount + " 名 ／ 全 " + roster.length + " 名");
@@ -285,16 +292,15 @@ function renderList(){
     const bal = (s.paidLeaveBalance===null) ? "—" : s.paidLeaveBalance;
     return ''
       + '<div class="card">'
-      +   '<div class="staff-head">'
-      +     '<span class="staff-name">'+escapeHtml(s.name||"(氏名未設定)")+'</span>'
-      +     activeBadge + adminBadge
+      +   '<div class="card-main">'
+      +     '<div class="staff-head">'
+      +       '<span class="staff-name">'+escapeHtml(s.name||"(氏名未設定)")+'</span>'
+      +       activeBadge + adminBadge
+      +     '</div>'
+      +     '<div class="staff-sub">'+fac+'・'+job+'／'+escapeHtml(shift)
+      +       '　有給残：'+bal+(s.paidLeaveAsOf?('（'+s.paidLeaveAsOf+'）'):'')+'</div>'
       +   '</div>'
-      +   '<div class="staff-sub">'+fac+'・'+job+'／既定シフト：'+escapeHtml(shift)
-      +     '　有給残：'+bal+(s.paidLeaveAsOf?('（'+s.paidLeaveAsOf+'時点）'):'')+'</div>'
-      +   '<div class="staff-sub muted">ID：'+escapeHtml(s.staffId)+'</div>'
-      +   '<div class="row-actions">'
-      +     '<button data-edit="'+escapeAttr(s.staffId)+'">編集</button>'
-      +   '</div>'
+      +   '<button class="edit-btn" data-edit="'+escapeAttr(s.staffId)+'">編集</button>'
       + '</div>';
   }).join("");
 
@@ -493,10 +499,19 @@ document.getElementById("btnExport").addEventListener("click", exportJson);
 document.getElementById("btnCancel").addEventListener("click", closeOverlay);
 document.getElementById("btnSave").addEventListener("click", save);
 document.getElementById("showRetired").addEventListener("change", renderList);
+document.getElementById("facilityFilter").addEventListener("change", renderList);
 // 背景（オーバーレイ）クリックでは閉じない。閉じるのは「キャンセル」ボタンのみ。
 // （入力中に枠外を触って消える誤操作を防ぐため）
 
+// 事業所フィルタの選択肢を shiftMaster から生成（「すべての事業所」＋各事業所）
+function fillFacilityFilter(){
+  const sel = document.getElementById("facilityFilter");
+  sel.innerHTML = '<option value="">すべての事業所</option>' +
+    facilities().map(f=>'<option value="'+f+'">'+(FACILITY_LABEL[f]||f)+'</option>').join("");
+}
+
 /* 起動 */
+fillFacilityFilter();
 loadRoster();
 </script>
 </body>
