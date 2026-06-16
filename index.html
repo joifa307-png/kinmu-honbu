@@ -2,517 +2,1192 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>スタッフ管理（出勤簿）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>出勤簿（本部）</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
-  :root{
-    --fg:#1b2430; --muted:#5b6675; --line:#d7dde6; --bg:#f4f6f9;
-    --card:#ffffff; --accent:#1f6feb; --accent-d:#1858bf;
-    --ok:#197a3e; --okbg:#e6f4ec; --off:#9aa4b2; --offbg:#eef1f5;
-    --warn:#b23b3b; --radius:12px;
-  }
-  *{box-sizing:border-box;}
-  body{
-    margin:0; font-family:system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
-    color:var(--fg); background:var(--bg); font-size:17px; line-height:1.6;
-  }
-  header{
-    background:var(--card); border-bottom:1px solid var(--line);
-    padding:14px 16px; position:sticky; top:0; z-index:5;
-    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
-  }
-  header h1{font-size:20px; margin:0; flex:1 1 auto;}
-  .wrap{max-width:980px; margin:0 auto; padding:16px;}
-  button{
-    font-size:16px; font-family:inherit; cursor:pointer; border-radius:10px;
-    border:1px solid var(--line); background:var(--card); color:var(--fg);
-    padding:12px 16px; min-height:48px;
-  }
-  button:focus-visible{outline:3px solid #9ec1ff; outline-offset:1px;}
-  .btn-primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600;}
-  .btn-primary:hover{background:var(--accent-d);}
-  .btn-lg{width:100%; font-size:18px; padding:14px;}
-  .row-actions button{padding:10px 14px; min-height:44px;}
-  .toolbar{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; align-items:center;}
-  .toolbar .grow{flex:1 1 auto;}
-  .toolbar select{width:auto; min-height:44px; font-size:15px; font-family:inherit; padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--fg);}
-  label.toggle{display:inline-flex; align-items:center; gap:8px; font-size:16px; color:var(--muted);}
-  /* list */
-  .card{
-    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
-    padding:10px 14px; margin-bottom:10px;
-    display:flex; align-items:center; gap:12px;
-  }
-  .card-main{flex:1 1 auto; min-width:0;}
-  .staff-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
-  .staff-name{font-size:17px; font-weight:700;}
-  .badge{font-size:12px; padding:2px 9px; border-radius:999px; font-weight:600;}
-  .badge-on{background:var(--okbg); color:var(--ok);}
-  .badge-off{background:var(--offbg); color:var(--off);}
-  .badge-admin{background:#eef0ff; color:#3a45c4;}
-  .staff-sub{color:var(--muted); font-size:14px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .edit-btn{flex:0 0 auto; padding:10px 18px; min-height:44px; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:10px; font-size:15px; cursor:pointer; font-family:inherit;}
-  .edit-btn:hover{background:#f1f3f7;}
-  .muted{color:var(--muted);}
-  .empty{text-align:center; color:var(--muted); padding:40px 10px;}
-  /* form modal */
-  .overlay{
-    position:fixed; inset:0; background:rgba(20,28,40,.45);
-    display:none; align-items:flex-start; justify-content:center; z-index:20; padding:16px;
-    overflow:auto;
-  }
-  .overlay.open{display:flex;}
-  .modal{
-    background:var(--card); border-radius:14px; width:100%; max-width:560px;
-    padding:20px; margin:24px 0;
-  }
-  .modal h2{margin:0 0 14px; font-size:20px;}
-  .field{margin-bottom:14px;}
-  .field label{display:block; font-weight:600; margin-bottom:6px;}
-  .field .hint{font-weight:400; color:var(--muted); font-size:14px;}
-  input[type=text],input[type=number],input[type=date],select{
-    width:100%; font-size:17px; font-family:inherit; padding:12px;
-    border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--fg);
-    min-height:48px;
-  }
-  input:focus,select:focus{outline:3px solid #9ec1ff; outline-offset:1px; border-color:var(--accent);}
-  input[readonly]{background:#f1f3f7; color:var(--muted);}
-  .switch{display:flex; align-items:center; gap:10px;}
-  .switch input{width:22px; height:22px;}
-  .form-err{color:var(--warn); font-size:15px; margin:6px 0 0; display:none;}
-  .form-err.show{display:block;}
-  .modal-actions{display:flex; gap:10px; margin-top:18px;}
-  .modal-actions button{flex:1;}
-  .status{font-size:15px; color:var(--muted); margin-left:auto;}
-  .loading{opacity:.5; pointer-events:none;}
-  @media (max-width:560px){
-    body{font-size:16px;}
-    header h1{font-size:18px; width:100%;}
-  }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:16px}
+body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;background:#eae5e3;color:#37322f;min-height:100vh;line-height:1.5}
+.app{max-width:1280px;margin:0 auto;padding:16px 20px 40px}
+
+/* ヘッダー */
+.header{background:#FCFBFA;border-radius:14px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(55,50,47,.06)}
+.header-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.app-title{font-size:1.15rem;font-weight:700;color:#0f6e56}
+.header-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:2px solid #d8d2ce;border-radius:10px;padding:8px 14px;font-size:.85rem;font-weight:600;background:#fff;color:#37322f;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.btn:hover{border-color:#0f6e56;color:#0f6e56}
+.btn-primary{background:#0f6e56;border-color:#0f6e56;color:#fff}
+.btn-primary:hover{background:#0d5c47;border-color:#0d5c47;color:#fff}
+.btn:disabled{opacity:.4;cursor:default}
+.period-nav{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px}
+.period-nav button{background:none;border:none;font-size:1.6rem;color:#0f6e56;padding:4px 14px;cursor:pointer;line-height:1}
+.period-nav button:disabled{opacity:.3;cursor:default}
+.period-label{font-size:1rem;font-weight:700;min-width:10em;text-align:center}
+.facility-filter{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.fac-chip{border:2px solid #d8d2ce;border-radius:20px;padding:6px 14px;font-size:.82rem;font-weight:600;background:#fff;cursor:pointer;transition:all .15s}
+.fac-chip.active{border-color:#0f6e56;background:#dcefe2;color:#0f6e56}
+
+/* タブ */
+.tabs{display:flex;gap:4px;margin-bottom:12px}
+.tab{flex:1;max-width:200px;padding:10px 12px;border:none;border-radius:10px 10px 0 0;background:#e8e4e1;font-size:.88rem;font-weight:600;color:#6b6562;cursor:pointer;font-family:inherit;transition:all .15s}
+.tab.active{background:#FCFBFA;color:#0f6e56;box-shadow:0 -1px 3px rgba(55,50,47,.04)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* カード・テーブル */
+.card{background:#FCFBFA;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(55,50,47,.06)}
+.status-msg{text-align:center;padding:32px 16px;color:#6b6562;font-size:.9rem}
+.status-msg.error{color:#a32d2d}
+.retry-btn{margin-top:12px;padding:8px 20px;border:2px solid #d8d2ce;border-radius:20px;background:#fff;font-size:.85rem;font-weight:600;cursor:pointer;font-family:inherit}
+
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+thead th{text-align:left;padding:10px 8px;border-bottom:2px solid #e8e4e1;font-weight:700;color:#6b6562;white-space:nowrap;background:#FCFBFA;position:sticky;top:0}
+tbody td{padding:9px 8px;border-bottom:1px solid #f0ece9;vertical-align:middle}
+tbody tr.sum-row{cursor:pointer;transition:background .12s}
+tbody tr.sum-row:hover{background:#f5f3f1}
+tbody tr.sum-row.expanded{background:#f8fcf9}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.note-mark{color:#854f0b;font-weight:700;margin-right:4px}
+.today-count{font-size:.9rem;font-weight:600;color:#0f6e56;margin-bottom:12px}
+.today-count span{font-size:1.05rem}
+
+/* 行展開明細 */
+.detail-row td{padding:0;border-bottom:1px solid #e8e4e1;background:#faf9f8}
+.detail-inner{padding:8px 12px 12px 28px}
+.detail-table{width:100%;font-size:.78rem}
+.detail-table th{padding:6px 8px;color:#6b6562;font-weight:600;border-bottom:1px solid #ece8e5}
+.detail-table td{padding:6px 8px;border-bottom:1px solid #f5f3f1}
+.tag{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:10px}
+.tag-work{background:#dcefe2;color:#0f6e56}
+.tag-hol{background:#faeeda;color:#854f0b}
+.tag-paid{background:#e6f1fb;color:#185fa5}
+.tag-abs{background:#fcebeb;color:#a32d2d}
+.chevron{display:inline-block;width:1em;color:#9a9490;transition:transform .15s}
+.sum-row.expanded .chevron{transform:rotate(90deg)}
+
+/* 個人明細 */
+.personal-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.personal-toolbar label{font-size:.85rem;font-weight:600;color:#6b6562;white-space:nowrap}
+.personal-staff-select{flex:1;min-width:180px;max-width:360px;border:2px solid #d8d2ce;border-radius:10px;padding:8px 12px;font-size:.88rem;font-family:inherit;background:#fff;color:#37322f}
+.personal-staff-select:focus{outline:2px solid #0f6e56;outline-offset:0}
+.personal-heading{font-size:.95rem;font-weight:700;margin-bottom:10px;line-height:1.6}
+.personal-heading .sub{font-size:.82rem;font-weight:600;color:#6b6562}
+.personal-detail-table{font-size:.8rem}
+.personal-detail-table thead th{position:static}
+.personal-detail-table .empty{color:#b5aea8}
+.personal-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:14px;padding-top:14px;border-top:2px solid #e8e4e1}
+.personal-totals .tot-item{text-align:center}
+.personal-totals .tot-val{font-size:1rem;font-weight:700;color:#0f6e56}
+.personal-totals .tot-lbl{font-size:.72rem;color:#6b6562;margin-top:2px}
+.personal-print-area{display:none}
+.personal-page{margin-bottom:24px}
+.personal-page-title{font-size:1rem;font-weight:700;margin-bottom:4px}
+.personal-page-sub{font-size:.85rem;color:#6b6562;margin-bottom:10px}
+
+/* 印刷用 */
+.print-title{display:none}
+@media print{
+  body{background:#fff}
+  .app{max-width:none;padding:0}
+  .header .header-actions,.tabs,.btn,.facility-filter,.period-nav button,.no-print{display:none!important}
+  .header,.card{box-shadow:none;border-radius:0;padding:0}
+  .tab-panel{display:none!important}
+  body:not(.print-personal) .tab-panel[data-tab="summary"].active{display:block!important}
+  body:not(.print-personal) .print-title{display:block!important;font-size:14pt;font-weight:700;margin-bottom:12px;text-align:center}
+  body.print-personal .personal-print-area{display:block!important}
+  body.print-personal .print-title{display:none!important}
+  .personal-page{page-break-after:always}
+  .personal-page:last-child{page-break-after:auto}
+  .sum-row{cursor:default}
+  .detail-row{display:none!important}
+  table{font-size:9pt}
+  thead th,tbody td{padding:4px 6px}
+}
 </style>
 </head>
 <body>
-<header>
-  <h1>スタッフ管理</h1>
-  <button id="btnReload">再読込</button>
-  <button id="btnExport">JSONバックアップ</button>
-  <button class="btn-primary" id="btnNew">＋ 新規登録</button>
-</header>
+<div class="app">
+  <header class="header no-print">
+    <div class="header-top">
+      <div class="app-title">出勤簿（本部）</div>
+      <div class="header-actions">
+        <button type="button" class="btn" id="btnCsv">CSV出力</button>
+        <button type="button" class="btn" id="btnXlsx">Excel出力</button>
+        <button type="button" class="btn" id="btnPrint">印刷</button>
+        <button type="button" class="btn btn-primary" id="btnReload">再読込</button>
+      </div>
+    </div>
+    <div class="period-nav">
+      <button type="button" id="btnPrevPeriod" aria-label="前月度">&#8249;</button>
+      <div class="period-label" id="periodLabel"></div>
+      <button type="button" id="btnNextPeriod" aria-label="翌月度">&#8250;</button>
+    </div>
+    <div class="facility-filter" id="facilityFilter"></div>
+  </header>
 
-<div class="wrap">
-  <div class="toolbar">
-    <select id="facilityFilter"><option value="">すべての事業所</option></select>
-    <span class="grow muted" id="count">読み込み中…</span>
-    <label class="toggle"><input type="checkbox" id="showRetired"> 退職者も表示</label>
+  <div class="tabs no-print">
+    <button type="button" class="tab" data-tab="today">当日の出勤状況</button>
+    <button type="button" class="tab active" data-tab="summary">月度集計</button>
+    <button type="button" class="tab" data-tab="personal">個人明細</button>
   </div>
-  <div id="list"></div>
-</div>
 
-<!-- 編集モーダル -->
-<div class="overlay" id="overlay">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-    <h2 id="modalTitle">スタッフ編集</h2>
+  <div class="print-title" id="printTitle"></div>
 
-    <div class="field">
-      <label for="f_staffId">WOFF社員ID（staffId）
-        <span class="hint" id="idHint">— 新規のみ入力可。本人がアプリで取得したIDを貼り付け</span>
-      </label>
-      <input type="text" id="f_staffId" autocomplete="off" placeholder="例: a1b2c3...">
+  <div class="tab-panel" data-tab="today" id="panelToday">
+    <div class="card">
+      <div class="today-count" id="todayCount" style="display:none"></div>
+      <div id="todayStatus" class="status-msg">読み込み中…</div>
+      <div class="table-wrap" id="todayTableWrap" style="display:none">
+        <table id="todayTable">
+          <thead>
+            <tr>
+              <th>氏名</th>
+              <th>所属</th>
+              <th>区分</th>
+              <th>シフト</th>
+              <th class="num">実働</th>
+              <th class="num">残業</th>
+              <th>特記事項</th>
+            </tr>
+          </thead>
+          <tbody id="todayBody"></tbody>
+        </table>
+      </div>
     </div>
-
-    <div class="field">
-      <label for="f_name">氏名</label>
-      <input type="text" id="f_name" autocomplete="off" placeholder="例: 山田 太郎">
-    </div>
-
-    <div class="field">
-      <label for="f_facility">事業所</label>
-      <select id="f_facility"></select>
-    </div>
-
-    <div class="field">
-      <label for="f_job">職種</label>
-      <select id="f_job"></select>
-    </div>
-
-    <div class="field">
-      <label for="f_shift">既定シフト <span class="hint">最初に選ばれるだけ（本人が変更可）</span></label>
-      <select id="f_shift"></select>
-    </div>
-
-    <div class="field">
-      <label for="f_role">権限</label>
-      <select id="f_role">
-        <option value="staff">staff（一般）</option>
-        <option value="admin">admin（本部）</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label for="f_workType">workType <span class="hint">表示ラベルのみ・空欄可</span></label>
-      <input type="text" id="f_workType" autocomplete="off" placeholder="例: A">
-    </div>
-
-    <div class="field">
-      <label for="f_balance">有給残（基準日時点）<span class="hint">空欄可</span></label>
-      <input type="number" id="f_balance" inputmode="numeric" step="0.5" min="0" placeholder="例: 12">
-    </div>
-
-    <div class="field">
-      <label for="f_asOf">有給の基準日 <span class="hint">残を入れたら必須</span></label>
-      <input type="date" id="f_asOf">
-    </div>
-
-    <div class="field">
-      <label class="switch"><input type="checkbox" id="f_active" checked> 在籍中（オフ＝退職）</label>
-    </div>
-
-    <div class="field" id="retiredWrap" style="display:none;">
-      <label for="f_retiredAt">退職日 <span class="hint">任意</span></label>
-      <input type="date" id="f_retiredAt">
-    </div>
-
-    <p class="form-err" id="formErr"></p>
-
-    <div class="modal-actions">
-      <button id="btnCancel">キャンセル</button>
-      <button class="btn-primary" id="btnSave">保存</button>
-    </div>
-    <p class="status" id="saveStatus"></p>
   </div>
+
+  <div class="tab-panel active" data-tab="summary" id="panelSummary">
+    <div class="card">
+      <div id="summaryStatus" class="status-msg">読み込み中…</div>
+      <div class="table-wrap" id="summaryTableWrap" style="display:none">
+        <table id="summaryTable">
+          <thead>
+            <tr>
+              <th></th>
+              <th>氏名</th>
+              <th>所属</th>
+              <th>職種</th>
+              <th class="num">出勤日数</th>
+              <th class="num">休出日数</th>
+              <th class="num">有休日数</th>
+              <th class="num">欠勤日数</th>
+              <th class="num">実働合計</th>
+              <th class="num">残業合計</th>
+              <th class="num">遅早回数</th>
+              <th class="num">有給残</th>
+            </tr>
+          </thead>
+          <tbody id="summaryBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-tab="personal" id="panelPersonal">
+    <div class="card">
+      <div class="personal-toolbar no-print">
+        <label for="personalStaffSelect">スタッフ選択</label>
+        <select id="personalStaffSelect" class="personal-staff-select">
+          <option value="">— 選択してください —</option>
+        </select>
+      </div>
+      <div id="personalStatus" class="status-msg" style="display:none"></div>
+      <div id="personalContent" style="display:none">
+        <div class="personal-heading" id="personalHeading"></div>
+        <div class="table-wrap">
+          <table class="personal-detail-table" id="personalTable">
+            <thead>
+              <tr>
+                <th>日付</th>
+                <th>曜日</th>
+                <th>区分</th>
+                <th>シフト名</th>
+                <th>時間</th>
+                <th class="num">休憩</th>
+                <th class="num">実働</th>
+                <th class="num">残業</th>
+                <th>備考</th>
+              </tr>
+            </thead>
+            <tbody id="personalBody"></tbody>
+          </table>
+        </div>
+        <div class="personal-totals" id="personalTotals"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="personalPrintArea" class="personal-print-area" aria-hidden="true"></div>
 </div>
 
 <script>
-/* =========================================================
- *  設定：GAS exec URL（※本部アプリの既存URLと同じものを使う）
- *  デプロイし直してもURLは変わらない仕様。念のため一度照合を。
- * ========================================================= */
-const GAS_URL = "https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec";
+/* ── 定数 ── */
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
+const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
+const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
+const FACILITY_SHORT = { all: '全て', nishi: '西', minami: '南', hibari: 'ひばり', link: 'リンク' };
+const JOB_LABELS = { kaigo: '介護職員', chori: '調理スタッフ', helper: 'ヘルパー（正）', caremane: 'ケアマネージャー', jimu: '事務スタッフ' };
+const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
-/* =========================================================
- *  マスタ：shiftMaster（両アプリ共通・HTML直書き）
- *  施設・職種・既定シフトの選択肢はすべてここから生成する。
- *  ※申し送り仕様書の16件と同一。増減時はここを直す。
- * ========================================================= */
-const SHIFT_MASTER = [
-  {shiftKey:"nishi_kaigo_nikkin",  facilityId:"nishi",  jobType:"kaigo",    label:"日勤"},
-  {shiftKey:"nishi_kaigo_hankin",  facilityId:"nishi",  jobType:"kaigo",    label:"半勤"},
-  {shiftKey:"nishi_kaigo_chiban",  facilityId:"nishi",  jobType:"kaigo",    label:"遅番"},
-  {shiftKey:"nishi_kaigo_yakin",   facilityId:"nishi",  jobType:"kaigo",    label:"夜勤"},
-  {shiftKey:"nishi_chori_a",       facilityId:"nishi",  jobType:"chori",    label:"調理A"},
-  {shiftKey:"nishi_chori_b",       facilityId:"nishi",  jobType:"chori",    label:"調理B"},
-  {shiftKey:"minami_kaigo_nikkin", facilityId:"minami", jobType:"kaigo",    label:"日勤"},
-  {shiftKey:"minami_kaigo_hankin", facilityId:"minami", jobType:"kaigo",    label:"半勤"},
-  {shiftKey:"minami_kaigo_chiban", facilityId:"minami", jobType:"kaigo",    label:"遅番"},
-  {shiftKey:"minami_kaigo_yakin",  facilityId:"minami", jobType:"kaigo",    label:"夜勤"},
-  {shiftKey:"minami_chori_a",      facilityId:"minami", jobType:"chori",    label:"調理A"},
-  {shiftKey:"minami_chori_b",      facilityId:"minami", jobType:"chori",    label:"調理B"},
-  {shiftKey:"hibari_helper_normal",   facilityId:"hibari", jobType:"helper",   label:"通常"},
-  {shiftKey:"hibari_caremane_normal", facilityId:"hibari", jobType:"caremane", label:"通常"},
-  {shiftKey:"link_jimu_somu",      facilityId:"link",   jobType:"jimu",     label:"総務"},
-  {shiftKey:"link_jimu_part",      facilityId:"link",   jobType:"jimu",     label:"パート"}
-];
-const FACILITY_LABEL = {nishi:"おひさま西", minami:"南のおひさま", hibari:"ひばり", link:"リンク"};
-const JOB_LABEL = {kaigo:"介護職員", chori:"調理スタッフ", helper:"ヘルパー", caremane:"ケアマネージャー", jimu:"事務スタッフ"};
+const EXPORT_HEADERS = ['氏名', '所属', '職種', '出勤日数', '休出日数', '有休日数', '欠勤日数', '実働合計', '残業合計', '遅早回数', '有給残'];
+const PERSONAL_HEADERS = ['日付', '曜日', '区分', 'シフト名', '時間', '休憩', '実働', '残業', '備考'];
 
-/* shiftMaster から導出するヘルパー */
-function facilities(){
-  const seen = [];
-  SHIFT_MASTER.forEach(s=>{ if(!seen.includes(s.facilityId)) seen.push(s.facilityId); });
-  return seen;
-}
-function jobsOf(fac){
-  const seen = [];
-  SHIFT_MASTER.filter(s=>s.facilityId===fac).forEach(s=>{ if(!seen.includes(s.jobType)) seen.push(s.jobType); });
-  return seen;
-}
-function shiftsOf(fac, job){
-  return SHIFT_MASTER.filter(s=>s.facilityId===fac && s.jobType===job);
-}
-function shiftLabel(key){
-  const s = SHIFT_MASTER.find(x=>x.shiftKey===key);
-  return s ? s.label : (key||"—");
+/* ── マスタ（スタッフアプリ複製） ── */
+const shiftMaster = {
+  nishi_kaigo_nikkin:  { shiftKey: 'nishi_kaigo_nikkin',  facilityId: 'nishi',  jobType: 'kaigo',    label: '日勤',  start: 510,  end: 1050, breakMin: 60,  workMin: 480, order: 1, active: true },
+  nishi_kaigo_hankin:  { shiftKey: 'nishi_kaigo_hankin',  facilityId: 'nishi',  jobType: 'kaigo',    label: '半勤',  start: 510,  end: 750,  breakMin: 0,   workMin: 240, order: 2, active: true },
+  nishi_kaigo_chiban:  { shiftKey: 'nishi_kaigo_chiban',  facilityId: 'nishi',  jobType: 'kaigo',    label: '遅番',  start: 570,  end: 1110, breakMin: 60,  workMin: 480, order: 3, active: true },
+  nishi_kaigo_yakin:   { shiftKey: 'nishi_kaigo_yakin',   facilityId: 'nishi',  jobType: 'kaigo',    label: '夜勤',  start: 1050, end: 510,  breakMin: 120, workMin: 780, order: 4, active: true },
+  nishi_chori_a:       { shiftKey: 'nishi_chori_a',       facilityId: 'nishi',  jobType: 'chori',    label: '調理A', start: 390,  end: 720,  breakMin: 0,   workMin: 330, order: 1, active: true },
+  nishi_chori_b:       { shiftKey: 'nishi_chori_b',       facilityId: 'nishi',  jobType: 'chori',    label: '調理B', start: 720,  end: 1110, breakMin: 45,  workMin: 345, order: 2, active: true },
+  minami_kaigo_nikkin: { shiftKey: 'minami_kaigo_nikkin', facilityId: 'minami', jobType: 'kaigo',    label: '日勤',  start: 510,  end: 1050, breakMin: 60,  workMin: 480, order: 1, active: true },
+  minami_kaigo_hankin: { shiftKey: 'minami_kaigo_hankin', facilityId: 'minami', jobType: 'kaigo',    label: '半勤',  start: 510,  end: 750,  breakMin: 0,   workMin: 240, order: 2, active: true },
+  minami_kaigo_chiban: { shiftKey: 'minami_kaigo_chiban', facilityId: 'minami', jobType: 'kaigo',    label: '遅番',  start: 540,  end: 1080, breakMin: 60,  workMin: 480, order: 3, active: true },
+  minami_kaigo_yakin:  { shiftKey: 'minami_kaigo_yakin',  facilityId: 'minami', jobType: 'kaigo',    label: '夜勤',  start: 1050, end: 540,  breakMin: 120, workMin: 810, order: 4, active: true },
+  minami_chori_a:      { shiftKey: 'minami_chori_a',      facilityId: 'minami', jobType: 'chori',    label: '調理A', start: 390,  end: 810,  breakMin: 60,  workMin: 360, order: 1, active: true },
+  minami_chori_b:      { shiftKey: 'minami_chori_b',      facilityId: 'minami', jobType: 'chori',    label: '調理B', start: 810,  end: 1110, breakMin: 0,   workMin: 300, order: 2, active: true },
+  hibari_helper_normal:{ shiftKey: 'hibari_helper_normal',facilityId: 'hibari', jobType: 'helper',   label: '通常',  start: 510,  end: 1050, breakMin: 60,  workMin: 480, order: 1, active: true },
+  hibari_caremane_normal:{ shiftKey:'hibari_caremane_normal',facilityId:'hibari',jobType:'caremane',label:'通常',  start: 510,  end: 1050, breakMin: 60,  workMin: 480, order: 1, active: true },
+  link_jimu_somu:      { shiftKey: 'link_jimu_somu',      facilityId: 'link',   jobType: 'jimu',     label: '総務',  start: 510,  end: 1050, breakMin: 60,  workMin: 480, order: 1, active: true },
+  link_jimu_part:      { shiftKey: 'link_jimu_part',      facilityId: 'link',   jobType: 'jimu',     label: 'パート',start: 510,  end: 900,  breakMin: 60,  workMin: 330, order: 2, active: true }
+};
+
+function shiftLabel(shiftKey) {
+  return (shiftKey && shiftMaster[shiftKey]) ? shiftMaster[shiftKey].label : (shiftKey || '—');
 }
 
-/* =========================================================
- *  状態
- * ========================================================= */
-let roster = [];          // staffMaster 全件
-let editingExisting = false;
+/* ── 締め期間（月度） ── */
+function todayStr() {
+  const d = new Date();
+  return ymd(d);
+}
 
-/* =========================================================
- *  読み込み（doGet ?type=staffAll）
- * ========================================================= */
-async function loadRoster(){
-  setCount("読み込み中…");
-  try{
-    const res = await fetch(GAS_URL + "?type=staffAll", {method:"GET"});
-    const data = await res.json();
-    if(!data || data.ok === false){ throw new Error(data && data.error || "取得に失敗しました"); }
-    roster = data.staff || [];
-    renderList();
-  }catch(err){
-    setCount("");
-    document.getElementById("list").innerHTML =
-      '<div class="empty">読み込みに失敗しました。<br>通信環境を確認して「再読込」を押してください。<br><span class="muted">'+escapeHtml(String(err))+'</span></div>';
+function ymd(dt) {
+  if (typeof dt === 'string') return dt;
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function getPeriod(baseDate) {
+  const d = baseDate || todayStr();
+  const [y, m, day] = d.split('-').map(Number);
+  let periodYear, periodMonth;
+  if (day >= 11) {
+    periodYear = y;
+    periodMonth = m;
+  } else {
+    const prev = new Date(y, m - 2, 1);
+    periodYear = prev.getFullYear();
+    periodMonth = prev.getMonth() + 1;
   }
-}
-
-/* =========================================================
- *  一覧描画
- * ========================================================= */
-function renderList(){
-  const showRetired = document.getElementById("showRetired").checked;
-  const facFilter = document.getElementById("facilityFilter").value; // "" = すべて
-  const list = document.getElementById("list");
-  let items = roster.slice().sort((a,b)=>{
-    // 在籍を上、次に事業所・氏名
-    if(a.active!==b.active) return a.active ? -1 : 1;
-    if(a.facilityId!==b.facilityId) return a.facilityId.localeCompare(b.facilityId);
-    return (a.name||"").localeCompare(b.name||"", "ja");
-  });
-  if(!showRetired) items = items.filter(s=>s.active);
-  if(facFilter)    items = items.filter(s=>s.facilityId===facFilter);
-
-  const activeCount = roster.filter(s=>s.active).length;
-  setCount("在籍 " + activeCount + " 名 ／ 全 " + roster.length + " 名");
-
-  if(items.length===0){
-    list.innerHTML = '<div class="empty">表示できるスタッフがいません。<br>「＋ 新規登録」から追加してください。</div>';
-    return;
-  }
-  list.innerHTML = items.map(s=>{
-    const fac = FACILITY_LABEL[s.facilityId]||s.facilityId||"—";
-    const job = JOB_LABEL[s.jobType]||s.jobType||"—";
-    const shift = shiftLabel(s.defaultShiftKey);
-    const activeBadge = s.active
-      ? '<span class="badge badge-on">在籍</span>'
-      : '<span class="badge badge-off">退職'+(s.retiredAt?(' '+s.retiredAt):'')+'</span>';
-    const adminBadge = (s.role==="admin") ? '<span class="badge badge-admin">本部</span>' : '';
-    const bal = (s.paidLeaveBalance===null) ? "—" : s.paidLeaveBalance;
-    return ''
-      + '<div class="card">'
-      +   '<div class="card-main">'
-      +     '<div class="staff-head">'
-      +       '<span class="staff-name">'+escapeHtml(s.name||"(氏名未設定)")+'</span>'
-      +       activeBadge + adminBadge
-      +     '</div>'
-      +     '<div class="staff-sub">'+fac+'・'+job+'／'+escapeHtml(shift)
-      +       '　有給残：'+bal+(s.paidLeaveAsOf?('（'+s.paidLeaveAsOf+'）'):'')+'</div>'
-      +   '</div>'
-      +   '<button class="edit-btn" data-edit="'+escapeAttr(s.staffId)+'">編集</button>'
-      + '</div>';
-  }).join("");
-
-  list.querySelectorAll("[data-edit]").forEach(btn=>{
-    btn.addEventListener("click", ()=> openEdit(btn.getAttribute("data-edit")));
-  });
-}
-
-/* =========================================================
- *  フォーム：選択肢の組み立て（カスケード）
- * ========================================================= */
-function fillFacilities(selected){
-  const sel = document.getElementById("f_facility");
-  sel.innerHTML = '<option value="">選択してください</option>' +
-    facilities().map(f=>'<option value="'+f+'">'+(FACILITY_LABEL[f]||f)+'</option>').join("");
-  sel.value = selected || "";
-}
-function fillJobs(fac, selected){
-  const sel = document.getElementById("f_job");
-  const jobs = fac ? jobsOf(fac) : [];
-  sel.innerHTML = '<option value="">選択してください</option>' +
-    jobs.map(j=>'<option value="'+j+'">'+(JOB_LABEL[j]||j)+'</option>').join("");
-  sel.value = (selected && jobs.includes(selected)) ? selected : "";
-}
-function fillShifts(fac, job, selected){
-  const sel = document.getElementById("f_shift");
-  const shifts = (fac && job) ? shiftsOf(fac, job) : [];
-  sel.innerHTML = '<option value="">選択してください</option>' +
-    shifts.map(s=>'<option value="'+s.shiftKey+'">'+s.label+'</option>').join("");
-  sel.value = (selected && shifts.some(s=>s.shiftKey===selected)) ? selected : "";
-}
-
-/* =========================================================
- *  フォームを開く（新規／編集）
- * ========================================================= */
-function openNew(){
-  editingExisting = false;
-  document.getElementById("modalTitle").textContent = "新規スタッフ登録";
-  document.getElementById("idHint").textContent = "— 本人がアプリで取得したIDを貼り付け";
-  const id = document.getElementById("f_staffId");
-  id.value = ""; id.readOnly = false;
-  document.getElementById("f_name").value = "";
-  fillFacilities("");
-  fillJobs("", "");
-  fillShifts("", "", "");
-  document.getElementById("f_role").value = "staff";
-  document.getElementById("f_workType").value = "";
-  document.getElementById("f_balance").value = "";
-  document.getElementById("f_asOf").value = "";
-  document.getElementById("f_active").checked = true;
-  document.getElementById("f_retiredAt").value = "";
-  syncRetiredVisibility();
-  clearFormErr();
-  document.getElementById("saveStatus").textContent = "";
-  openOverlay();
-}
-function openEdit(staffId){
-  const s = roster.find(x=>x.staffId===staffId);
-  if(!s) return;
-  editingExisting = true;
-  document.getElementById("modalTitle").textContent = "スタッフ編集";
-  document.getElementById("idHint").textContent = "— 既存のため変更不可（別人化を防ぐため）";
-  const id = document.getElementById("f_staffId");
-  id.value = s.staffId; id.readOnly = true;
-  document.getElementById("f_name").value = s.name||"";
-  fillFacilities(s.facilityId);
-  fillJobs(s.facilityId, s.jobType);
-  fillShifts(s.facilityId, s.jobType, s.defaultShiftKey);
-  document.getElementById("f_role").value = (s.role==="admin")?"admin":"staff";
-  document.getElementById("f_workType").value = s.workType||"";
-  document.getElementById("f_balance").value = (s.paidLeaveBalance===null)?"":s.paidLeaveBalance;
-  document.getElementById("f_asOf").value = s.paidLeaveAsOf||"";
-  document.getElementById("f_active").checked = !!s.active;
-  document.getElementById("f_retiredAt").value = s.retiredAt||"";
-  syncRetiredVisibility();
-  clearFormErr();
-  document.getElementById("saveStatus").textContent = "";
-  openOverlay();
-}
-
-/* =========================================================
- *  バリデーション＆保存
- * ========================================================= */
-function validate(){
-  const v = readForm();
-  if(!v.staffId) return "WOFF社員ID（staffId）を入力してください。";
-  if(!v.name)    return "氏名を入力してください。";
-  if(!v.facilityId) return "事業所を選んでください。";
-  if(!v.jobType)    return "職種を選んでください。";
-  if(!v.defaultShiftKey) return "既定シフトを選んでください。";
-  // 既定シフトが 施設×職種 に属するか最終チェック
-  if(!shiftsOf(v.facilityId, v.jobType).some(s=>s.shiftKey===v.defaultShiftKey)){
-    return "既定シフトが事業所・職種と一致していません。選び直してください。";
-  }
-  // 有給残を入れたら基準日必須（有給残の計算に基準日を使うため）
-  if(v.paidLeaveBalance!==null && !v.paidLeaveAsOf){
-    return "有給残を入れたときは「有給の基準日」も必須です。";
-  }
-  // 新規でIDが既存と重複していないか
-  if(!editingExisting && roster.some(s=>s.staffId===v.staffId)){
-    return "このIDは既に登録済みです（重複登録はできません）。";
-  }
-  return null;
-}
-function readForm(){
-  const balRaw = document.getElementById("f_balance").value.trim();
+  const from = `${periodYear}-${String(periodMonth).padStart(2, '0')}-11`;
+  const endDt = new Date(periodYear, periodMonth, 10);
+  const to = ymd(endDt);
+  const tm = endDt.getMonth() + 1;
+  const td = endDt.getDate();
   return {
-    staffId: document.getElementById("f_staffId").value.trim(),
-    name: document.getElementById("f_name").value.trim(),
-    facilityId: document.getElementById("f_facility").value,
-    jobType: document.getElementById("f_job").value,
-    workType: document.getElementById("f_workType").value.trim(),
-    defaultShiftKey: document.getElementById("f_shift").value,
-    role: document.getElementById("f_role").value,
-    active: document.getElementById("f_active").checked,
-    paidLeaveBalance: balRaw==="" ? null : Number(balRaw),
-    paidLeaveAsOf: document.getElementById("f_asOf").value || "",
-    retiredAt: document.getElementById("f_retiredAt").value || ""
+    label: `${periodYear}年${periodMonth}月度`,
+    ym: `${periodYear}-${String(periodMonth).padStart(2, '0')}`,
+    from,
+    to,
+    periodYear,
+    periodMonth,
+    rangeLabel: `${periodMonth}/11〜${tm}/${td}`
   };
 }
-async function save(){
-  const err = validate();
-  if(err){ showFormErr(err); return; }
-  clearFormErr();
-  const staff = readForm();
 
-  const modal = document.querySelector(".modal");
-  const status = document.getElementById("saveStatus");
-  modal.classList.add("loading");
-  status.textContent = "保存中…";
-  try{
-    // CORS回避：text/plain で送る（GAS側は JSON.parse で受ける）
-    const res = await fetch(GAS_URL, {
-      method:"POST",
-      headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify({ type:"staff", staff: staff })
+function prevPeriod(p) {
+  const dt = new Date(p.periodYear, p.periodMonth - 2, 15);
+  return getPeriod(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-15`);
+}
+
+function nextPeriod(p) {
+  const dt = new Date(p.periodYear, p.periodMonth, 15);
+  return getPeriod(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-15`);
+}
+
+function fmtDateWithDow(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return `${m}/${d}（${DOW_LABELS[dt.getDay()]}）`;
+}
+
+/* ── 表示・集計ヘルパー ── */
+const H = m => (Number(m) / 60).toFixed(1) + 'H';
+const Hnum = m => parseFloat((Number(m) / 60).toFixed(1));
+
+function fmtClock(min) {
+  const h = Math.floor(Number(min) / 60) % 24;
+  const m = Number(min) % 60;
+  return `${h}:${String(m).padStart(2, '0')}`;
+}
+
+function fmtTimeRange(start, end) {
+  if (start == null || end == null) return '—';
+  const s = Number(start);
+  const e = Number(end);
+  if (isNaN(s) || isNaN(e)) return '—';
+  if (e <= s) return `${fmtClock(s)}〜翌${fmtClock(e)}`;
+  return `${fmtClock(s)}〜${fmtClock(e)}`;
+}
+
+function fmtDurJa(min) {
+  const n = Number(min) || 0;
+  if (n <= 0) return '—';
+  const h = Math.floor(n / 60);
+  const m = n % 60;
+  if (h === 0) return `${m}分`;
+  if (m === 0) return `${h}h`;
+  return `${h}h${m}分`;
+}
+
+function periodDates(from, to) {
+  const dates = [];
+  let d = from;
+  while (d <= to) {
+    dates.push(d);
+    d = addDays(d, 1);
+  }
+  return dates;
+}
+
+function personalStatusLabel(rec) {
+  if (!rec) return '—';
+  if (rec.status === 'paid_leave') return '有給';
+  if (rec.status === 'absence') return '欠勤';
+  return '勤務';
+}
+
+function buildPersonalNote(rec) {
+  if (!rec) return '—';
+  const parts = [];
+  if (rec.lateFlag) {
+    parts.push('遅刻早退' + (rec.lateNote && String(rec.lateNote).trim() ? `：${rec.lateNote}` : ''));
+  }
+  if (rec.holidayWorkFlag) parts.push('休日出勤');
+  if (rec.status === 'absence') {
+    const reason = rec.absenceReason === 'sick' ? '病欠' : rec.absenceReason === 'other' ? 'その他' : '';
+    if (reason) parts.push(reason);
+    if (rec.absenceNote && String(rec.absenceNote).trim()) parts.push(String(rec.absenceNote).trim());
+  }
+  if (rec.memo && String(rec.memo).trim()) parts.push(String(rec.memo).trim());
+  return parts.length ? parts.join('／') : '—';
+}
+
+function fmtDateShort(dateStr) {
+  const [, m, d] = dateStr.split('-').map(Number);
+  return `${m}/${d}`;
+}
+
+function fmtDow(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return DOW_LABELS[new Date(y, m - 1, d).getDay()];
+}
+
+function buildPersonalDayRow(dateStr, rec) {
+  if (!rec) {
+    return {
+      date: fmtDateShort(dateStr),
+      dow: fmtDow(dateStr),
+      status: '—',
+      shift: '—',
+      time: '—',
+      brk: '—',
+      work: '—',
+      ot: '',
+      note: '—',
+      empty: true
+    };
+  }
+  return {
+    date: fmtDateShort(dateStr),
+    dow: fmtDow(dateStr),
+    status: personalStatusLabel(rec),
+    shift: rec.status === 'work' ? shiftLabel(rec.shiftKey) : '—',
+    time: rec.status === 'work' ? fmtTimeRange(rec.start, rec.end) : '—',
+    brk: rec.status === 'work' ? fmtDurJa(rec.breakMin) : '—',
+    work: rec.status === 'work' ? fmtDurJa(rec.workMin) : '—',
+    ot: rec.status === 'work' && Number(rec.overtimeMin) > 0 ? fmtDurJa(rec.overtimeMin) : '',
+    note: buildPersonalNote(rec),
+    empty: false
+  };
+}
+
+function buildPersonalDetailData(staff) {
+  const recs = recordsForStaff(staff.staffId);
+  const recMap = {};
+  recs.forEach(r => { if (r.date) recMap[r.date] = r; });
+  const rows = periodDates(period.from, period.to).map(d => buildPersonalDayRow(d, recMap[d]));
+  const agg = aggregateRecords(recs);
+  return { staff, rows, agg };
+}
+
+function personalHeadingHtml(staff) {
+  const job = JOB_LABELS[staff.jobType] || staff.jobType || '—';
+  return `${esc(staff.name)}（${esc(facilityLabel(staff.facilityId))}・${esc(job)}）<div class="sub">${esc(period.label)}（${esc(period.rangeLabel)}）</div>`;
+}
+
+function personalTotalsHtml(agg) {
+  return `
+    <div class="tot-item"><div class="tot-val">${agg.workDays}日</div><div class="tot-lbl">出勤日数</div></div>
+    <div class="tot-item"><div class="tot-val">${agg.holDays}日</div><div class="tot-lbl">休出日数</div></div>
+    <div class="tot-item"><div class="tot-val">${agg.paidDays}日</div><div class="tot-lbl">有休日数</div></div>
+    <div class="tot-item"><div class="tot-val">${agg.absDays}日</div><div class="tot-lbl">欠勤日数</div></div>
+    <div class="tot-item"><div class="tot-val">${fmtDurJa(agg.workMin)}</div><div class="tot-lbl">実働合計</div></div>
+    <div class="tot-item"><div class="tot-val">${agg.otMin > 0 ? fmtDurJa(agg.otMin) : '—'}</div><div class="tot-lbl">残業合計</div></div>`;
+}
+
+function personalTotalsText(agg) {
+  return `出勤日数:${agg.workDays} 休出日数:${agg.holDays} 有休日数:${agg.paidDays} 欠勤日数:${agg.absDays} 実働合計:${fmtDurJa(agg.workMin)} 残業合計:${agg.otMin > 0 ? fmtDurJa(agg.otMin) : '—'}`;
+}
+
+function personalRowToArray(row) {
+  return [row.date, row.dow, row.status, row.shift, row.time, row.brk, row.work, row.ot, row.note];
+}
+
+function buildPersonalTableBodyHtml(rows) {
+  return rows.map(row => {
+    const cls = row.empty ? ' class="empty"' : '';
+    return `<tr${cls}>
+      <td>${esc(row.date)}</td>
+      <td>${esc(row.dow)}</td>
+      <td>${esc(row.status)}</td>
+      <td>${esc(row.shift)}</td>
+      <td>${esc(row.time)}</td>
+      <td class="num">${esc(row.brk)}</td>
+      <td class="num">${esc(row.work)}</td>
+      <td class="num">${esc(row.ot)}</td>
+      <td>${esc(row.note)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function buildPersonalTableHtml(rows) {
+  return `<table class="personal-detail-table"><thead><tr>
+    ${PERSONAL_HEADERS.map(h => `<th${h === '休憩' || h === '実働' || h === '残業' ? ' class="num"' : ''}>${h}</th>`).join('')}
+  </tr></thead><tbody>${buildPersonalTableBodyHtml(rows)}</tbody></table>`;
+}
+
+function buildPersonalPrintBlock(staff, rows, agg) {
+  const job = JOB_LABELS[staff.jobType] || staff.jobType || '—';
+  return `<div class="personal-page">
+    <div class="personal-page-title">${esc(staff.name)}（${esc(facilityLabel(staff.facilityId))}・${esc(job)}）</div>
+    <div class="personal-page-sub">${esc(period.label)}（${esc(period.rangeLabel)}）</div>
+    ${buildPersonalTableHtml(rows)}
+    <div class="personal-totals">${personalTotalsHtml(agg)}</div>
+  </div>`;
+}
+
+function uniqueSheetName(name, used) {
+  let base = String(name || 'シート').replace(/[\\/?*[\]:]/g, '').slice(0, 28);
+  if (!base) base = 'シート';
+  let candidate = base;
+  let n = 2;
+  while (used.has(candidate)) {
+    const suffix = `_${n}`;
+    candidate = base.slice(0, 31 - suffix.length) + suffix;
+    n++;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function csvEscape(cell) {
+  const s = String(cell ?? '');
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function statusTag(rec) {
+  if (rec.status === 'paid_leave') return { cls: 'tag-paid', text: '有給' };
+  if (rec.status === 'absence') return { cls: 'tag-abs', text: '欠勤' };
+  if (rec.status === 'work' && rec.holidayWorkFlag) return { cls: 'tag-hol', text: '休出' };
+  return { cls: 'tag-work', text: '通常' };
+}
+
+function aggregateRecords(records) {
+  let workDays = 0, holDays = 0, paidDays = 0, absDays = 0;
+  let workMin = 0, otMin = 0, lateCount = 0;
+  let hasMemo = false;
+  records.forEach(r => {
+    if (r.memo && String(r.memo).trim()) hasMemo = true;
+    if (r.status === 'work') {
+      workDays++;
+      if (r.holidayWorkFlag) holDays++;
+      workMin += Number(r.workMin) || 0;
+      otMin += Number(r.overtimeMin) || 0;
+      if (r.lateFlag) lateCount++;
+    } else if (r.status === 'paid_leave') {
+      paidDays++;
+    } else if (r.status === 'absence') {
+      absDays++;
+    }
+  });
+  return { workDays, holDays, paidDays, absDays, workMin, otMin, lateCount, hasMemo };
+}
+
+function countPaidLeaveConsumed(records, asOf) {
+  return records.filter(r => {
+    if (r.status !== 'paid_leave') return false;
+    if (!asOf) return true;
+    return r.date > asOf;
+  }).length;
+}
+
+function calcPaidLeaveRemaining(staff, consumedRecords) {
+  if (staff.paidLeaveBalance === null || staff.paidLeaveBalance === undefined || staff.paidLeaveBalance === '') return null;
+  const balance = Number(staff.paidLeaveBalance);
+  if (isNaN(balance)) return null;
+  const consumed = countPaidLeaveConsumed(consumedRecords, staff.paidLeaveAsOf || '');
+  return balance - consumed;
+}
+
+/* ── GAS ── */
+async function fetchStaff() {
+  const url = `${GAS_URL}?type=staff`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('スタッフ情報の取得に失敗しました。');
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'スタッフ情報の取得に失敗しました。');
+  return data.staff || {};
+}
+
+async function fetchAllRecordsByPeriod(from, to) {
+  const url = `${GAS_URL}?type=allRecordsByPeriod&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('勤務記録の取得に失敗しました。');
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || '勤務記録の取得に失敗しました。');
+  return data.records || [];
+}
+
+async function fetchRecordsByStaff(staffId, from, to) {
+  const url = `${GAS_URL}?type=recordsByStaff&staffId=${encodeURIComponent(staffId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (!data.ok) return [];
+  return data.records || [];
+}
+
+/* ── 状態 ── */
+let period = getPeriod(todayStr());
+let facilityFilter = 'all';
+let activeTab = 'summary';
+let selectedPersonalStaffId = null;
+let staffMap = {};
+let periodRecords = [];
+let paidLeaveRecordsMap = {};
+let expandedStaffId = null;
+let loading = false;
+let loadError = null;
+let todayRecords = [];
+let todayLoading = false;
+let todayLoadError = null;
+
+const $ = id => document.getElementById(id);
+
+function facilityLabel(id) {
+  return FACILITY_LABELS[id] || id || '—';
+}
+
+function facilityFilterLabel() {
+  return facilityFilter === 'all' ? '全て' : (FACILITY_SHORT[facilityFilter] || facilityFilter);
+}
+
+function filteredStaffList() {
+  return Object.values(staffMap)
+    .filter(s => s.active !== false)
+    .filter(s => facilityFilter === 'all' || s.facilityId === facilityFilter)
+    .sort((a, b) => {
+      const fa = FACILITY_ORDER.indexOf(a.facilityId);
+      const fb = FACILITY_ORDER.indexOf(b.facilityId);
+      if (fa !== fb) return (fa < 0 ? 99 : fa) - (fb < 0 ? 99 : fb);
+      return (a.name || '').localeCompare(b.name || '', 'ja');
     });
-    const data = await res.json();
-    if(!data || data.ok===false){ throw new Error(data && data.error || "保存に失敗しました"); }
-    // ローカルの roster も更新（再読込せず即反映）
-    const idx = roster.findIndex(s=>s.staffId===staff.staffId);
-    if(idx>=0) roster[idx] = staff; else roster.push(staff);
-    modal.classList.remove("loading");
-    closeOverlay();
-    renderList();
-  }catch(e){
-    modal.classList.remove("loading");
-    status.textContent = "";
-    showFormErr("保存に失敗しました：" + String(e) + "（通信を確認して再度お試しください）");
+}
+
+function recordsForStaff(staffId) {
+  return periodRecords.filter(r => r.staffId === staffId);
+}
+
+function fmtOtDisplay(min) {
+  const n = Number(min) || 0;
+  return n > 0 ? H(n) : '—';
+}
+
+function buildTodayRows() {
+  return todayRecords
+    .map(rec => ({ rec, staff: staffMap[rec.staffId] }))
+    .filter(({ staff }) => facilityFilter === 'all' || (staff && staff.facilityId === facilityFilter))
+    .sort((a, b) => {
+      const fa = FACILITY_ORDER.indexOf(a.staff?.facilityId);
+      const fb = FACILITY_ORDER.indexOf(b.staff?.facilityId);
+      if (fa !== fb) return (fa < 0 ? 99 : fa) - (fb < 0 ? 99 : fb);
+      const na = a.staff?.name || a.rec.staffId || '';
+      const nb = b.staff?.name || b.rec.staffId || '';
+      return na.localeCompare(nb, 'ja');
+    });
+}
+
+function buildSummaryRows() {
+  const staffList = filteredStaffList();
+  return staffList.map(staff => {
+    const recs = recordsForStaff(staff.staffId);
+    const agg = aggregateRecords(recs);
+    const paidRemain = calcPaidLeaveRemaining(staff, paidLeaveRecordsMap[staff.staffId] || []);
+    return { staff, recs, agg, paidRemain };
+  });
+}
+
+/* ── 描画 ── */
+function renderHeader() {
+  $('periodLabel').textContent = period.label;
+  const cur = getPeriod(todayStr());
+  $('btnNextPeriod').disabled = period.ym >= cur.ym;
+
+  const wrap = $('facilityFilter');
+  wrap.innerHTML = '';
+  ['all', ...FACILITY_ORDER].forEach(fid => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'fac-chip' + (facilityFilter === fid ? ' active' : '');
+    btn.textContent = FACILITY_SHORT[fid] || fid;
+    btn.addEventListener('click', () => {
+      if (facilityFilter === fid) return;
+      facilityFilter = fid;
+      expandedStaffId = null;
+      selectedPersonalStaffId = null;
+      renderHeader();
+      renderSummary();
+      renderToday();
+      renderPersonal();
+      updatePrintTitle();
+    });
+    wrap.appendChild(btn);
+  });
+
+  updatePrintTitle();
+}
+
+function updatePrintTitle() {
+  if (activeTab === 'personal') {
+    $('printTitle').textContent = `${period.label} 個人明細／${facilityFilterLabel()}`;
+  } else {
+    $('printTitle').textContent = `${period.label} 勤務集計表／${facilityFilterLabel()}`;
   }
 }
 
-/* =========================================================
- *  JSONバックアップ（手動エクスポート）
- * ========================================================= */
-function exportJson(){
-  const blob = new Blob([JSON.stringify({exportedAt:new Date().toISOString(), staff:roster}, null, 2)],
-                        {type:"application/json"});
-  const a = document.createElement("a");
-  const ymd = new Date().toISOString().slice(0,10);
+function renderTodayError(msg) {
+  $('todayCount').style.display = 'none';
+  $('todayStatus').style.display = 'block';
+  $('todayStatus').className = 'status-msg error';
+  $('todayStatus').innerHTML = `${msg}<br><button type="button" class="retry-btn" id="todayRetryBtn">再読込</button>`;
+  $('todayTableWrap').style.display = 'none';
+  $('todayRetryBtn').addEventListener('click', loadTodayData);
+}
+
+function renderToday() {
+  if (todayLoadError) {
+    renderTodayError(todayLoadError);
+    return;
+  }
+  if (todayLoading) {
+    $('todayCount').style.display = 'none';
+    $('todayStatus').style.display = 'block';
+    $('todayStatus').className = 'status-msg';
+    $('todayStatus').textContent = '読み込み中…';
+    $('todayTableWrap').style.display = 'none';
+    return;
+  }
+
+  const rows = buildTodayRows();
+  if (!rows.length) {
+    $('todayCount').style.display = 'none';
+    $('todayStatus').style.display = 'block';
+    $('todayStatus').className = 'status-msg';
+    $('todayStatus').textContent = '本日の登録はまだありません';
+    $('todayTableWrap').style.display = 'none';
+    return;
+  }
+
+  $('todayCount').style.display = 'block';
+  $('todayCount').innerHTML = `本日 <span>${rows.length}</span>名登録`;
+  $('todayStatus').style.display = 'none';
+  $('todayTableWrap').style.display = 'block';
+
+  const tbody = $('todayBody');
+  tbody.innerHTML = '';
+  rows.forEach(({ rec, staff }) => {
+    const tag = statusTag(rec);
+    const name = staff?.name || rec.staffId || '—';
+    const facility = staff ? facilityLabel(staff.facilityId) : '—';
+    const shift = rec.status === 'work' ? esc(shiftLabel(rec.shiftKey)) : '—';
+    const work = rec.status === 'work' ? H(rec.workMin) : '—';
+    const ot = rec.status === 'work' ? fmtOtDisplay(rec.overtimeMin) : '—';
+    const memo = rec.memo && String(rec.memo).trim() ? esc(rec.memo) : '';
+    const noteMark = memo ? '<span class="note-mark" title="特記事項あり">●</span>' : '';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${noteMark}${esc(name)}</td>
+      <td>${esc(facility)}</td>
+      <td><span class="tag ${tag.cls}">${tag.text}</span></td>
+      <td>${shift}</td>
+      <td class="num">${work}</td>
+      <td class="num">${ot}</td>
+      <td>${memo}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderSummaryError(msg) {
+  $('summaryStatus').style.display = 'block';
+  $('summaryStatus').className = 'status-msg error';
+  $('summaryStatus').innerHTML = `${msg}<br><button type="button" class="retry-btn" id="retryBtn">再読込</button>`;
+  $('summaryTableWrap').style.display = 'none';
+  $('retryBtn').addEventListener('click', loadData);
+}
+
+function renderSummary() {
+  if (loadError) {
+    renderSummaryError(loadError);
+    return;
+  }
+  if (loading) {
+    $('summaryStatus').style.display = 'block';
+    $('summaryStatus').className = 'status-msg';
+    $('summaryStatus').textContent = '読み込み中…';
+    $('summaryTableWrap').style.display = 'none';
+    return;
+  }
+
+  const rows = buildSummaryRows();
+  if (!rows.length) {
+    $('summaryStatus').style.display = 'block';
+    $('summaryStatus').className = 'status-msg';
+    $('summaryStatus').textContent = '対象スタッフがありません';
+    $('summaryTableWrap').style.display = 'none';
+    return;
+  }
+
+  $('summaryStatus').style.display = 'none';
+  $('summaryTableWrap').style.display = 'block';
+
+  const tbody = $('summaryBody');
+  tbody.innerHTML = '';
+
+  rows.forEach(({ staff, recs, agg, paidRemain }) => {
+    const tr = document.createElement('tr');
+    tr.className = 'sum-row' + (expandedStaffId === staff.staffId ? ' expanded' : '');
+    tr.dataset.staffId = staff.staffId;
+
+    const paidDisplay = paidRemain === null ? '—' : String(paidRemain);
+    const noteMark = agg.hasMemo ? '<span class="note-mark" title="特記事項あり">●</span>' : '';
+
+    tr.innerHTML = `
+      <td><span class="chevron">›</span></td>
+      <td>${noteMark}${esc(staff.name)}</td>
+      <td>${esc(facilityLabel(staff.facilityId))}</td>
+      <td>${esc(JOB_LABELS[staff.jobType] || staff.jobType || '—')}</td>
+      <td class="num">${agg.workDays}</td>
+      <td class="num">${agg.holDays}</td>
+      <td class="num">${agg.paidDays}</td>
+      <td class="num">${agg.absDays}</td>
+      <td class="num">${H(agg.workMin)}</td>
+      <td class="num">${H(agg.otMin)}</td>
+      <td class="num">${agg.lateCount}</td>
+      <td class="num">${paidDisplay}</td>
+    `;
+
+    tr.addEventListener('click', () => {
+      expandedStaffId = expandedStaffId === staff.staffId ? null : staff.staffId;
+      renderSummary();
+    });
+
+    tbody.appendChild(tr);
+
+    if (expandedStaffId === staff.staffId) {
+      const detailTr = document.createElement('tr');
+      detailTr.className = 'detail-row';
+      const sorted = recs.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      let detailHtml = '<div class="detail-inner"><table class="detail-table"><thead><tr>';
+      detailHtml += '<th>日付</th><th>区分</th><th>シフト</th><th class="num">実働</th><th class="num">残業</th><th>特記事項</th></tr></thead><tbody>';
+      if (!sorted.length) {
+        detailHtml += '<tr><td colspan="6" style="color:#6b6562">記録なし</td></tr>';
+      } else {
+        sorted.forEach(rec => {
+          const tag = statusTag(rec);
+          const shift = rec.status === 'work' ? esc(shiftLabel(rec.shiftKey)) : '—';
+          const work = rec.status === 'work' ? H(rec.workMin) : '—';
+          const ot = rec.status === 'work' && Number(rec.overtimeMin) > 0 ? H(rec.overtimeMin) : '—';
+          const memo = rec.memo && String(rec.memo).trim() ? esc(rec.memo) : '';
+          detailHtml += `<tr>
+            <td>${fmtDateWithDow(rec.date)}</td>
+            <td><span class="tag ${tag.cls}">${tag.text}</span></td>
+            <td>${shift}</td>
+            <td class="num">${work}</td>
+            <td class="num">${ot}</td>
+            <td>${memo}</td>
+          </tr>`;
+        });
+      }
+      detailHtml += '</tbody></table></div>';
+      detailTr.innerHTML = `<td colspan="12">${detailHtml}</td>`;
+      tbody.appendChild(detailTr);
+    }
+  });
+}
+
+function renderPersonalStaffSelect() {
+  const select = $('personalStaffSelect');
+  const staffList = filteredStaffList();
+  const prev = selectedPersonalStaffId;
+  select.innerHTML = '<option value="">— 選択してください —</option>';
+  staffList.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.staffId;
+    opt.textContent = s.name || s.staffId;
+    select.appendChild(opt);
+  });
+  if (prev && staffList.some(s => s.staffId === prev)) {
+    select.value = prev;
+  } else if (staffList.length) {
+    selectedPersonalStaffId = staffList[0].staffId;
+    select.value = selectedPersonalStaffId;
+  } else {
+    selectedPersonalStaffId = null;
+    select.value = '';
+  }
+}
+
+function renderPersonal() {
+  if (loadError) {
+    $('personalStatus').style.display = 'block';
+    $('personalStatus').className = 'status-msg error';
+    $('personalStatus').textContent = loadError;
+    $('personalContent').style.display = 'none';
+    return;
+  }
+  if (loading) {
+    $('personalStatus').style.display = 'block';
+    $('personalStatus').className = 'status-msg';
+    $('personalStatus').textContent = '読み込み中…';
+    $('personalContent').style.display = 'none';
+    return;
+  }
+
+  renderPersonalStaffSelect();
+
+  const staff = selectedPersonalStaffId ? staffMap[selectedPersonalStaffId] : null;
+  if (!staff) {
+    $('personalStatus').style.display = 'block';
+    $('personalStatus').className = 'status-msg';
+    $('personalStatus').textContent = filteredStaffList().length ? 'スタッフを選択してください' : '対象スタッフがありません';
+    $('personalContent').style.display = 'none';
+    return;
+  }
+
+  const { rows, agg } = buildPersonalDetailData(staff);
+  $('personalStatus').style.display = 'none';
+  $('personalContent').style.display = 'block';
+  $('personalHeading').innerHTML = personalHeadingHtml(staff);
+  $('personalBody').innerHTML = buildPersonalTableBodyHtml(rows);
+  $('personalTotals').innerHTML = personalTotalsHtml(agg);
+}
+
+function buildPersonalPrintArea() {
+  const staffList = filteredStaffList();
+  $('personalPrintArea').innerHTML = staffList.map(s => {
+    const { rows, agg } = buildPersonalDetailData(s);
+    return buildPersonalPrintBlock(s, rows, agg);
+  }).join('');
+}
+
+function buildPersonalExportList() {
+  return filteredStaffList().map(s => buildPersonalDetailData(s));
+}
+
+function personalExportFileName(ext) {
+  return `個人明細_${period.ym}.${ext}`;
+}
+
+function switchTab(tabId) {
+  activeTab = tabId;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.dataset.tab === tabId));
+  updatePrintTitle();
+  if (tabId === 'personal') renderPersonal();
+}
+
+/* ── 出力 ── */
+function exportRows() {
+  return buildSummaryRows().map(({ staff, agg, paidRemain }) => [
+    staff.name || '',
+    facilityLabel(staff.facilityId),
+    JOB_LABELS[staff.jobType] || staff.jobType || '',
+    agg.workDays,
+    agg.holDays,
+    agg.paidDays,
+    agg.absDays,
+    Hnum(agg.workMin),
+    Hnum(agg.otMin),
+    agg.lateCount,
+    paidRemain === null ? '' : paidRemain
+  ]);
+}
+
+function exportFileName(ext) {
+  return `勤務集計_${period.ym}_${facilityFilter}.${ext}`;
+}
+
+function exportCsv() {
+  if (loading || loadError) return;
+  if (activeTab === 'personal') {
+    exportPersonalCsv();
+    return;
+  }
+  const rows = exportRows();
+  if (!rows.length) return;
+  const lines = [EXPORT_HEADERS.join(',')];
+  rows.forEach(row => {
+    lines.push(row.map(cell => csvEscape(cell)).join(','));
+  });
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  downloadBlob(blob, exportFileName('csv'));
+}
+
+function exportPersonalCsv() {
+  const list = buildPersonalExportList();
+  if (!list.length) return;
+  const lines = [];
+  list.forEach(({ staff, rows, agg }, i) => {
+    if (i > 0) lines.push('');
+    const job = JOB_LABELS[staff.jobType] || staff.jobType || '';
+    lines.push(['氏名', '事業所', '職種', '月度'].map(csvEscape).join(','));
+    lines.push([staff.name || '', facilityLabel(staff.facilityId), job, period.label].map(csvEscape).join(','));
+    lines.push(PERSONAL_HEADERS.map(csvEscape).join(','));
+    rows.forEach(row => lines.push(personalRowToArray(row).map(csvEscape).join(',')));
+    lines.push(['合計', '', '', '', '', '', '', '', personalTotalsText(agg)].map(csvEscape).join(','));
+  });
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  downloadBlob(blob, personalExportFileName('csv'));
+}
+
+function exportXlsx() {
+  if (loading || loadError) return;
+  if (typeof XLSX === 'undefined') {
+    alert('Excel出力ライブラリの読み込みに失敗しました。ページを再読込してください。');
+    return;
+  }
+  if (activeTab === 'personal') {
+    exportPersonalXlsx();
+    return;
+  }
+  const rows = exportRows();
+  if (!rows.length) return;
+
+  const title = `${period.label} 勤務集計表／${facilityFilterLabel()}`;
+  const aoa = [
+    [title],
+    [],
+    EXPORT_HEADERS,
+    ...rows
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: EXPORT_HEADERS.length - 1 } }];
+
+  const colWidths = EXPORT_HEADERS.map((h, ci) => {
+    let max = h.length;
+    rows.forEach(r => {
+      const len = String(r[ci] ?? '').length;
+      if (len > max) max = len;
+    });
+    return { wch: Math.min(Math.max(max + 2, 8), 28) };
+  });
+  ws['!cols'] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '勤務集計');
+  XLSX.writeFile(wb, exportFileName('xlsx'));
+}
+
+function exportPersonalXlsx() {
+  const list = buildPersonalExportList();
+  if (!list.length) return;
+  const wb = XLSX.utils.book_new();
+  const usedNames = new Set();
+
+  list.forEach(({ staff, rows, agg }) => {
+    const job = JOB_LABELS[staff.jobType] || staff.jobType || '';
+    const title = `${staff.name}（${facilityLabel(staff.facilityId)}・${job}）`;
+    const sub = `${period.label}（${period.rangeLabel}）`;
+    const aoa = [
+      [title],
+      [sub],
+      [],
+      PERSONAL_HEADERS,
+      ...rows.map(personalRowToArray),
+      [],
+      ['合計', '', '', '', '', '', '', '', personalTotalsText(agg)]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: PERSONAL_HEADERS.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: PERSONAL_HEADERS.length - 1 } }
+    ];
+    ws['!cols'] = PERSONAL_HEADERS.map((h, ci) => {
+      let max = h.length;
+      rows.forEach(r => {
+        const val = personalRowToArray(r)[ci];
+        const len = String(val ?? '').length;
+        if (len > max) max = len;
+      });
+      return { wch: Math.min(Math.max(max + 2, 6), 24) };
+    });
+    XLSX.utils.book_append_sheet(wb, ws, uniqueSheetName(staff.name, usedNames));
+  });
+
+  XLSX.writeFile(wb, personalExportFileName('xlsx'));
+}
+
+function doPrint() {
+  if (activeTab === 'personal') {
+    if (loading || loadError) return;
+    buildPersonalPrintArea();
+    document.body.classList.add('print-personal');
+    const cleanup = () => {
+      document.body.classList.remove('print-personal');
+      $('personalPrintArea').innerHTML = '';
+    };
+    window.addEventListener('afterprint', cleanup, { once: true });
+    window.print();
+    return;
+  }
+  document.body.classList.remove('print-personal');
+  window.print();
+}
+
+function downloadBlob(blob, filename) {
+  const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = "staffMaster_backup_" + ymd + ".json";
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(a.href);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-/* =========================================================
- *  小物
- * ========================================================= */
-function setCount(t){ document.getElementById("count").textContent = t; }
-function openOverlay(){ document.getElementById("overlay").classList.add("open"); }
-function closeOverlay(){ document.getElementById("overlay").classList.remove("open"); }
-function showFormErr(msg){ const el=document.getElementById("formErr"); el.textContent=msg; el.classList.add("show"); }
-function clearFormErr(){ const el=document.getElementById("formErr"); el.textContent=""; el.classList.remove("show"); }
-function syncRetiredVisibility(){
-  const active = document.getElementById("f_active").checked;
-  document.getElementById("retiredWrap").style.display = active ? "none" : "block";
-}
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function escapeAttr(s){ return escapeHtml(s); }
-
-/* =========================================================
- *  イベント
- * ========================================================= */
-document.getElementById("f_facility").addEventListener("change", e=>{
-  fillJobs(e.target.value, "");
-  fillShifts(e.target.value, "", "");
-});
-document.getElementById("f_job").addEventListener("change", e=>{
-  fillShifts(document.getElementById("f_facility").value, e.target.value, "");
-});
-document.getElementById("f_active").addEventListener("change", syncRetiredVisibility);
-document.getElementById("btnNew").addEventListener("click", openNew);
-document.getElementById("btnReload").addEventListener("click", loadRoster);
-document.getElementById("btnExport").addEventListener("click", exportJson);
-document.getElementById("btnCancel").addEventListener("click", closeOverlay);
-document.getElementById("btnSave").addEventListener("click", save);
-document.getElementById("showRetired").addEventListener("change", renderList);
-document.getElementById("facilityFilter").addEventListener("change", renderList);
-// 背景（オーバーレイ）クリックでは閉じない。閉じるのは「キャンセル」ボタンのみ。
-// （入力中に枠外を触って消える誤操作を防ぐため）
-
-// 事業所フィルタの選択肢を shiftMaster から生成（「すべての事業所」＋各事業所）
-function fillFacilityFilter(){
-  const sel = document.getElementById("facilityFilter");
-  sel.innerHTML = '<option value="">すべての事業所</option>' +
-    facilities().map(f=>'<option value="'+f+'">'+(FACILITY_LABEL[f]||f)+'</option>').join("");
+/* ── データ読込 ── */
+async function loadPaidLeaveForStaff(staff) {
+  if (staff.paidLeaveBalance === null || staff.paidLeaveBalance === undefined || staff.paidLeaveBalance === '') {
+    return { staffId: staff.staffId, records: [] };
+  }
+  const from = staff.paidLeaveAsOf ? addDays(staff.paidLeaveAsOf, 1) : '2020-01-01';
+  const to = todayStr();
+  const records = await fetchRecordsByStaff(staff.staffId, from, to);
+  return { staffId: staff.staffId, records };
 }
 
-/* 起動 */
-fillFacilityFilter();
-loadRoster();
+function addDays(dateStr, delta) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + delta);
+  return ymd(dt);
+}
+
+async function loadTodayData() {
+  if (todayLoading) return;
+  todayLoading = true;
+  todayLoadError = null;
+  renderToday();
+
+  try {
+    const today = todayStr();
+    if (!Object.keys(staffMap).length) {
+      staffMap = await fetchStaff();
+    }
+    todayRecords = await fetchAllRecordsByPeriod(today, today);
+    todayLoading = false;
+    renderToday();
+  } catch (e) {
+    todayLoading = false;
+    todayLoadError = e.message || 'データの取得に失敗しました。';
+    renderToday();
+  }
+}
+
+async function loadData() {
+  if (loading) return;
+  loading = true;
+  loadError = null;
+  renderSummary();
+
+  try {
+    const [staff, records] = await Promise.all([
+      fetchStaff(),
+      fetchAllRecordsByPeriod(period.from, period.to)
+    ]);
+    staffMap = staff;
+    periodRecords = records;
+
+    const staffList = filteredStaffList();
+    const paidResults = await Promise.all(staffList.map(s => loadPaidLeaveForStaff(s)));
+    paidLeaveRecordsMap = {};
+    paidResults.forEach(r => { paidLeaveRecordsMap[r.staffId] = r.records; });
+
+    loading = false;
+    renderSummary();
+    renderToday();
+    renderPersonal();
+  } catch (e) {
+    loading = false;
+    loadError = e.message || 'データの取得に失敗しました。';
+    renderSummary();
+    renderPersonal();
+  }
+}
+
+function changePeriod(delta) {
+  period = delta < 0 ? prevPeriod(period) : nextPeriod(period);
+  expandedStaffId = null;
+  selectedPersonalStaffId = null;
+  renderHeader();
+  loadData();
+}
+
+/* ── 初期化 ── */
+function init() {
+  renderHeader();
+
+  $('btnPrevPeriod').addEventListener('click', () => changePeriod(-1));
+  $('btnNextPeriod').addEventListener('click', () => changePeriod(1));
+  $('btnReload').addEventListener('click', () => { loadData(); loadTodayData(); });
+  $('btnCsv').addEventListener('click', exportCsv);
+  $('btnXlsx').addEventListener('click', exportXlsx);
+  $('btnPrint').addEventListener('click', doPrint);
+
+  $('personalStaffSelect').addEventListener('change', () => {
+    selectedPersonalStaffId = $('personalStaffSelect').value || null;
+    renderPersonal();
+  });
+
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  });
+
+  loadData();
+  loadTodayData();
+}
+
+init();
 </script>
 </body>
 </html>
