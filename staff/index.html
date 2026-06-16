@@ -247,6 +247,15 @@ let roster = [];          // staffMaster 全件
 let editingExisting = false;
 let editingOriginalStaffId = "";
 
+/** staffId は GAS/スプレッドシート経由で数値になることがあるため常に文字列で比較 */
+function normStaffId(id) {
+  return String(id ?? '').trim();
+}
+function findStaff(staffId) {
+  const key = normStaffId(staffId);
+  return roster.find(s => normStaffId(s.staffId) === key);
+}
+
 /* =========================================================
  *  読み込み（doGet ?type=staffAll）
  * ========================================================= */
@@ -256,7 +265,7 @@ async function loadRoster(){
     const res = await fetch(GAS_URL + "?type=staffAll", {method:"GET"});
     const data = await res.json();
     if(!data || data.ok === false){ throw new Error(data && data.error || "取得に失敗しました"); }
-    roster = data.staff || [];
+    roster = (data.staff || []).map(s => ({ ...s, staffId: normStaffId(s.staffId) }));
     renderList();
   }catch(err){
     setCount("");
@@ -308,8 +317,8 @@ function renderList(){
       +       '　有給残：'+bal+(s.paidLeaveAsOf?('（'+s.paidLeaveAsOf+'）'):'')+'</div>'
       +   '</div>'
       +   '<div class="row-actions">'
-      +     '<button class="edit-btn" data-edit="'+escapeAttr(s.staffId)+'">編集</button>'
-      +     '<button class="del-btn" data-del="'+escapeAttr(s.staffId)+'">削除</button>'
+      +     '<button type="button" class="edit-btn" data-edit="'+escapeAttr(normStaffId(s.staffId))+'">編集</button>'
+      +     '<button type="button" class="del-btn" data-del="'+escapeAttr(normStaffId(s.staffId))+'">削除</button>'
       +   '</div>'
       + '</div>';
   }).join("");
@@ -374,10 +383,10 @@ function openNew(){
   openOverlay();
 }
 function openEdit(staffId){
-  const s = roster.find(x=>x.staffId===staffId);
+  const s = findStaff(staffId);
   if(!s) return;
   editingExisting = true;
-  editingOriginalStaffId = s.staffId;
+  editingOriginalStaffId = normStaffId(s.staffId);
   document.getElementById("modalTitle").textContent = "スタッフ編集";
   document.getElementById("idHint").textContent = STAFF_ID_LOCKED
     ? "— 既存のため変更不可（別人化を防ぐため）"
@@ -419,11 +428,11 @@ function validate(){
     return "有給残を入れたときは「有給の基準日」も必須です。";
   }
   // 新規でIDが既存と重複していないか
-  if(!editingExisting && roster.some(s=>s.staffId===v.staffId)){
+  if(!editingExisting && roster.some(s=>normStaffId(s.staffId)===normStaffId(v.staffId))){
     return "このIDは既に登録済みです（重複登録はできません）。";
   }
   // 編集でIDを変えたとき、他の人と重複していないか
-  if(editingExisting && v.staffId !== editingOriginalStaffId && roster.some(s=>s.staffId===v.staffId)){
+  if(editingExisting && normStaffId(v.staffId) !== normStaffId(editingOriginalStaffId) && roster.some(s=>normStaffId(s.staffId)===normStaffId(v.staffId))){
     return "このIDは既に登録済みです（重複登録はできません）。";
   }
   return null;
@@ -449,6 +458,7 @@ async function save(){
   if(err){ showFormErr(err); return; }
   clearFormErr();
   const staff = readForm();
+  staff.staffId = normStaffId(staff.staffId);
 
   const modal = document.querySelector(".modal");
   const status = document.getElementById("saveStatus");
@@ -468,9 +478,9 @@ async function save(){
     if(!data || data.ok===false){ throw new Error(data && data.error || "保存に失敗しました"); }
     // ローカルの roster も更新（再読込せず即反映）
     if (editingOriginalStaffId && editingOriginalStaffId !== staff.staffId) {
-      roster = roster.filter(s => s.staffId !== editingOriginalStaffId);
+      roster = roster.filter(s => normStaffId(s.staffId) !== editingOriginalStaffId);
     }
-    const idx = roster.findIndex(s=>s.staffId===staff.staffId);
+    const idx = roster.findIndex(s => normStaffId(s.staffId) === staff.staffId);
     if(idx>=0) roster[idx] = staff; else roster.push(staff);
     modal.classList.remove("loading");
     closeOverlay();
@@ -483,19 +493,20 @@ async function save(){
 }
 
 async function deleteStaff(staffId){
-  const s = roster.find(x=>x.staffId===staffId);
+  const s = findStaff(staffId);
   if(!s) return;
-  const name = s.name || staffId;
+  const id = normStaffId(s.staffId);
+  const name = s.name || id;
   if(!confirm(name + " さんを削除しますか？\n\nスプレッドシートから行が完全に削除されます。\n勤務記録は残りますが、この操作は取り消せません。")) return;
   try{
     const res = await fetch(GAS_URL, {
       method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify({ type:"staffDelete", staffId: staffId })
+      body: JSON.stringify({ type:"staffDelete", staffId: id })
     });
     const data = await res.json();
     if(!data || data.ok===false){ throw new Error(data && data.error || "削除に失敗しました"); }
-    roster = roster.filter(x=>x.staffId!==staffId);
+    roster = roster.filter(x => normStaffId(x.staffId) !== id);
     renderList();
   }catch(e){
     alert("削除に失敗しました：" + String(e) + "\n通信を確認して再度お試しください。");
