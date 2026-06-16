@@ -493,11 +493,11 @@ document.getElementById("btnExport").addEventListener("click", exportJson);
 document.getElementById("btnCancel").addEventListener("click", closeOverlay);
 document.getElementById("btnSave").addEventListener("click", save);
 document.getElementById("showRetired").addEventListener("change", renderList);
-document.getElementById("overlay").addEventListener("click", e=>{ if(e.target.id==="overlay") closeOverlay(); });
+// 背景（オーバーレイ）クリックでは閉じない。閉じるのは「キャンセル」ボタンのみ。
+// （入力中に枠外を触って消える誤操作を防ぐため）
 
 /* 起動 */
 loadRoster();
 </script>
 </body>
 </html>
-
