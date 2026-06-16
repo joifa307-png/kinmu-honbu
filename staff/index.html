@@ -53,6 +53,9 @@
   .staff-sub{color:var(--muted); font-size:14px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .edit-btn{flex:0 0 auto; padding:10px 18px; min-height:44px; border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:10px; font-size:15px; cursor:pointer; font-family:inherit;}
   .edit-btn:hover{background:#f1f3f7;}
+  .del-btn{flex:0 0 auto; padding:10px 14px; min-height:44px; border:1px solid #e8c4c4; background:#fff5f5; color:var(--warn); border-radius:10px; font-size:15px; cursor:pointer; font-family:inherit;}
+  .del-btn:hover{background:#fce8e8;}
+  .row-actions{display:flex; gap:8px; flex:0 0 auto;}
   .muted{color:var(--muted);}
   .empty{text-align:center; color:var(--muted); padding:40px 10px;}
   /* form modal */
@@ -114,10 +117,10 @@
     <h2 id="modalTitle">スタッフ編集</h2>
 
     <div class="field">
-      <label for="f_staffId">WOFF社員ID（staffId）
-        <span class="hint" id="idHint">— 新規のみ入力可。本人がアプリで取得したIDを貼り付け</span>
+      <label for="f_staffId">社員ID（staffId）
+        <span class="hint" id="idHint">— 簡易な数字など任意のIDで登録可（一時運用）</span>
       </label>
-      <input type="text" id="f_staffId" autocomplete="off" placeholder="例: a1b2c3...">
+      <input type="text" id="f_staffId" autocomplete="off" placeholder="例: 1">
     </div>
 
     <div class="field">
@@ -189,6 +192,9 @@
  * ========================================================= */
 const GAS_URL = "https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec";
 
+/** 一時的に false：編集時も staffId を変更可（簡易ID投入用）。本番前に true に戻す */
+const STAFF_ID_LOCKED = false;
+
 /* =========================================================
  *  マスタ：shiftMaster（両アプリ共通・HTML直書き）
  *  施設・職種・既定シフトの選択肢はすべてここから生成する。
@@ -239,6 +245,7 @@ function shiftLabel(key){
  * ========================================================= */
 let roster = [];          // staffMaster 全件
 let editingExisting = false;
+let editingOriginalStaffId = "";
 
 /* =========================================================
  *  読み込み（doGet ?type=staffAll）
@@ -300,12 +307,18 @@ function renderList(){
       +     '<div class="staff-sub">'+fac+'・'+job+'／'+escapeHtml(shift)
       +       '　有給残：'+bal+(s.paidLeaveAsOf?('（'+s.paidLeaveAsOf+'）'):'')+'</div>'
       +   '</div>'
-      +   '<button class="edit-btn" data-edit="'+escapeAttr(s.staffId)+'">編集</button>'
+      +   '<div class="row-actions">'
+      +     '<button class="edit-btn" data-edit="'+escapeAttr(s.staffId)+'">編集</button>'
+      +     '<button class="del-btn" data-del="'+escapeAttr(s.staffId)+'">削除</button>'
+      +   '</div>'
       + '</div>';
   }).join("");
 
   list.querySelectorAll("[data-edit]").forEach(btn=>{
     btn.addEventListener("click", ()=> openEdit(btn.getAttribute("data-edit")));
+  });
+  list.querySelectorAll("[data-del]").forEach(btn=>{
+    btn.addEventListener("click", ()=> deleteStaff(btn.getAttribute("data-del")));
   });
 }
 
@@ -338,8 +351,11 @@ function fillShifts(fac, job, selected){
  * ========================================================= */
 function openNew(){
   editingExisting = false;
+  editingOriginalStaffId = "";
   document.getElementById("modalTitle").textContent = "新規スタッフ登録";
-  document.getElementById("idHint").textContent = "— 本人がアプリで取得したIDを貼り付け";
+  document.getElementById("idHint").textContent = STAFF_ID_LOCKED
+    ? "— 本人がアプリで取得したIDを貼り付け"
+    : "— 簡易な数字など任意のIDで登録可（一時運用）";
   const id = document.getElementById("f_staffId");
   id.value = ""; id.readOnly = false;
   document.getElementById("f_name").value = "";
@@ -361,10 +377,13 @@ function openEdit(staffId){
   const s = roster.find(x=>x.staffId===staffId);
   if(!s) return;
   editingExisting = true;
+  editingOriginalStaffId = s.staffId;
   document.getElementById("modalTitle").textContent = "スタッフ編集";
-  document.getElementById("idHint").textContent = "— 既存のため変更不可（別人化を防ぐため）";
+  document.getElementById("idHint").textContent = STAFF_ID_LOCKED
+    ? "— 既存のため変更不可（別人化を防ぐため）"
+    : "— 一時運用：IDの変更も可";
   const id = document.getElementById("f_staffId");
-  id.value = s.staffId; id.readOnly = true;
+  id.value = s.staffId; id.readOnly = STAFF_ID_LOCKED;
   document.getElementById("f_name").value = s.name||"";
   fillFacilities(s.facilityId);
   fillJobs(s.facilityId, s.jobType);
@@ -386,7 +405,7 @@ function openEdit(staffId){
  * ========================================================= */
 function validate(){
   const v = readForm();
-  if(!v.staffId) return "WOFF社員ID（staffId）を入力してください。";
+  if(!v.staffId) return "社員ID（staffId）を入力してください。";
   if(!v.name)    return "氏名を入力してください。";
   if(!v.facilityId) return "事業所を選んでください。";
   if(!v.jobType)    return "職種を選んでください。";
@@ -401,6 +420,10 @@ function validate(){
   }
   // 新規でIDが既存と重複していないか
   if(!editingExisting && roster.some(s=>s.staffId===v.staffId)){
+    return "このIDは既に登録済みです（重複登録はできません）。";
+  }
+  // 編集でIDを変えたとき、他の人と重複していないか
+  if(editingExisting && v.staffId !== editingOriginalStaffId && roster.some(s=>s.staffId===v.staffId)){
     return "このIDは既に登録済みです（重複登録はできません）。";
   }
   return null;
@@ -432,15 +455,21 @@ async function save(){
   modal.classList.add("loading");
   status.textContent = "保存中…";
   try{
-    // CORS回避：text/plain で送る（GAS側は JSON.parse で受ける）
+    const payload = { type:"staff", staff: staff };
+    if (editingExisting && editingOriginalStaffId && editingOriginalStaffId !== staff.staffId) {
+      payload.originalStaffId = editingOriginalStaffId;
+    }
     const res = await fetch(GAS_URL, {
       method:"POST",
       headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify({ type:"staff", staff: staff })
+      body: JSON.stringify(payload)
     });
     const data = await res.json();
     if(!data || data.ok===false){ throw new Error(data && data.error || "保存に失敗しました"); }
     // ローカルの roster も更新（再読込せず即反映）
+    if (editingOriginalStaffId && editingOriginalStaffId !== staff.staffId) {
+      roster = roster.filter(s => s.staffId !== editingOriginalStaffId);
+    }
     const idx = roster.findIndex(s=>s.staffId===staff.staffId);
     if(idx>=0) roster[idx] = staff; else roster.push(staff);
     modal.classList.remove("loading");
@@ -450,6 +479,26 @@ async function save(){
     modal.classList.remove("loading");
     status.textContent = "";
     showFormErr("保存に失敗しました：" + String(e) + "（通信を確認して再度お試しください）");
+  }
+}
+
+async function deleteStaff(staffId){
+  const s = roster.find(x=>x.staffId===staffId);
+  if(!s) return;
+  const name = s.name || staffId;
+  if(!confirm(name + " さんを削除しますか？\n\nスプレッドシートから行が完全に削除されます。\n勤務記録は残りますが、この操作は取り消せません。")) return;
+  try{
+    const res = await fetch(GAS_URL, {
+      method:"POST",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body: JSON.stringify({ type:"staffDelete", staffId: staffId })
+    });
+    const data = await res.json();
+    if(!data || data.ok===false){ throw new Error(data && data.error || "削除に失敗しました"); }
+    roster = roster.filter(x=>x.staffId!==staffId);
+    renderList();
+  }catch(e){
+    alert("削除に失敗しました：" + String(e) + "\n通信を確認して再度お試しください。");
   }
 }
 
