@@ -16,7 +16,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku
 .header-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px}
 .app-title{font-size:1.15rem;font-weight:700;color:#0f6e56}
 .header-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.header-print-col{display:flex;flex-direction:column;gap:4px;align-items:stretch}
 .btn{border:2px solid #d8d2ce;border-radius:10px;padding:8px 14px;font-size:.85rem;font-weight:600;background:#fff;color:#37322f;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+a.btn-link{border:2px solid #d8d2ce;border-radius:10px;padding:8px 14px;font-size:.85rem;font-weight:600;background:#fff;color:#37322f;text-decoration:none;text-align:center;font-family:inherit;transition:all .15s;white-space:nowrap}
+a.btn-link:hover{border-color:#0f6e56;color:#0f6e56}
 .btn:hover{border-color:#0f6e56;color:#0f6e56}
 .btn-primary{background:#0f6e56;border-color:#0f6e56;color:#fff}
 .btn-primary:hover{background:#0d5c47;border-color:#0d5c47;color:#fff}
@@ -123,7 +126,10 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
       <div class="header-actions">
         <button type="button" class="btn" id="btnCsv">CSV出力</button>
         <button type="button" class="btn" id="btnXlsx">Excel出力</button>
-        <button type="button" class="btn" id="btnPrint">印刷</button>
+        <div class="header-print-col">
+          <button type="button" class="btn" id="btnPrint">印刷</button>
+          <a class="btn-link" href="https://joifa307-png.github.io/kinmu-honbu/staff/">【スタッフ管理へ】</a>
+        </div>
         <button type="button" class="btn btn-primary" id="btnReload">再読込</button>
       </div>
     </div>
@@ -238,7 +244,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9ad
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
 const FACILITY_SHORT = { all: '全て', nishi: '西', minami: '南', hibari: 'ひばり', link: 'リンク' };
-const JOB_LABELS = { kaigo: '介護職員', chori: '調理スタッフ', helper: 'ヘルパー（正）', caremane: 'ケアマネージャー', jimu: '事務スタッフ' };
+const JOB_LABELS = { kaigo: '介護職員', kaigo_toku: '介護職員（特）', chori: '調理スタッフ', helper: 'ヘルパー（正）', caremane: 'ケアマネージャー', jimu: '事務スタッフ' };
 const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
 const EXPORT_HEADERS = ['氏名', '所属', '職種', '出勤日数', '休出日数', '有休日数', '欠勤日数', '実働合計', '残業合計', '遅早回数', '有給残'];
@@ -256,6 +262,7 @@ const shiftMaster = {
   minami_kaigo_hankin: { shiftKey: 'minami_kaigo_hankin', facilityId: 'minami', jobType: 'kaigo',    label: '半勤',  start: 510,  end: 750,  breakMin: 0,   workMin: 240, order: 2, active: true },
   minami_kaigo_chiban: { shiftKey: 'minami_kaigo_chiban', facilityId: 'minami', jobType: 'kaigo',    label: '遅番',  start: 540,  end: 1080, breakMin: 60,  workMin: 480, order: 3, active: true },
   minami_kaigo_yakin:  { shiftKey: 'minami_kaigo_yakin',  facilityId: 'minami', jobType: 'kaigo',    label: '夜勤',  start: 1050, end: 540,  breakMin: 120, workMin: 810, order: 4, active: true },
+  minami_kaigo_tokutei:{ shiftKey: 'minami_kaigo_tokutei',facilityId: 'minami', jobType: 'kaigo_toku',label: '日勤',  start: 510,  end: 990,  breakMin: 60,  workMin: 480, order: 1, active: true },
   minami_chori_a:      { shiftKey: 'minami_chori_a',      facilityId: 'minami', jobType: 'chori',    label: '調理A', start: 390,  end: 810,  breakMin: 60,  workMin: 360, order: 1, active: true },
   minami_chori_b:      { shiftKey: 'minami_chori_b',      facilityId: 'minami', jobType: 'chori',    label: '調理B', start: 810,  end: 1110, breakMin: 0,   workMin: 300, order: 2, active: true },
   hibari_helper_normal:{ shiftKey: 'hibari_helper_normal',facilityId: 'hibari', jobType: 'helper',   label: '通常',  start: 510,  end: 1050, breakMin: 60,  workMin: 480, order: 1, active: true },
