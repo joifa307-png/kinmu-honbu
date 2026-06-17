@@ -16,10 +16,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku
 .header-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px}
 .app-title{font-size:1.15rem;font-weight:700;color:#0f6e56}
 .header-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.header-print-col{display:flex;flex-direction:column;gap:4px;align-items:stretch}
 .btn{border:2px solid #d8d2ce;border-radius:10px;padding:8px 14px;font-size:.85rem;font-weight:600;background:#fff;color:#37322f;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
-a.btn-link{border:2px solid #d8d2ce;border-radius:10px;padding:8px 14px;font-size:.85rem;font-weight:600;background:#fff;color:#37322f;text-decoration:none;text-align:center;font-family:inherit;transition:all .15s;white-space:nowrap}
+a.btn-link{border:2px solid #d8d2ce;border-radius:10px;padding:8px 14px;font-size:.85rem;font-weight:600;background:#fff;color:#37322f;text-decoration:none;text-align:center;font-family:inherit;transition:all .15s;white-space:nowrap;display:inline-block}
 a.btn-link:hover{border-color:#0f6e56;color:#0f6e56}
+.table-toolbar{margin-bottom:12px}
 .btn:hover{border-color:#0f6e56;color:#0f6e56}
 .btn-primary{background:#0f6e56;border-color:#0f6e56;color:#fff}
 .btn-primary:hover{background:#0d5c47;border-color:#0d5c47;color:#fff}
@@ -126,10 +126,7 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
       <div class="header-actions">
         <button type="button" class="btn" id="btnCsv">CSV出力</button>
         <button type="button" class="btn" id="btnXlsx">Excel出力</button>
-        <div class="header-print-col">
-          <button type="button" class="btn" id="btnPrint">印刷</button>
-          <a class="btn-link" href="https://joifa307-png.github.io/kinmu-honbu/staff/">【スタッフ管理へ】</a>
-        </div>
+        <button type="button" class="btn" id="btnPrint">印刷</button>
         <button type="button" class="btn btn-primary" id="btnReload">再読込</button>
       </div>
     </div>
@@ -153,6 +150,9 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
     <div class="card">
       <div class="today-count" id="todayCount" style="display:none"></div>
       <div id="todayDupAlert" style="display:none"></div>
+      <div class="table-toolbar no-print">
+        <a class="btn-link" href="https://joifa307-png.github.io/kinmu-honbu/staff/">スタッフ管理</a>
+      </div>
       <div id="todayStatus" class="status-msg">読み込み中…</div>
       <div class="table-wrap" id="todayTableWrap" style="display:none">
         <table id="todayTable">
@@ -176,6 +176,9 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
   <div class="tab-panel active" data-tab="summary" id="panelSummary">
     <div class="card">
       <div id="summaryDupAlert" style="display:none"></div>
+      <div class="table-toolbar no-print">
+        <a class="btn-link" href="https://joifa307-png.github.io/kinmu-honbu/staff/">スタッフ管理</a>
+      </div>
       <div id="summaryStatus" class="status-msg">読み込み中…</div>
       <div class="table-wrap" id="summaryTableWrap" style="display:none">
         <table id="summaryTable">
