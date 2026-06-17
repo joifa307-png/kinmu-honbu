@@ -46,6 +46,7 @@
   .card-main{flex:1 1 auto; min-width:0;}
   .staff-head{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
   .staff-name{font-size:17px; font-weight:700;}
+  .staff-id{color:var(--muted); font-size:14px; font-weight:400;}
   .badge{font-size:12px; padding:2px 9px; border-radius:999px; font-weight:600;}
   .badge-on{background:var(--okbg); color:var(--ok);}
   .badge-off{background:var(--offbg); color:var(--off);}
@@ -324,6 +325,7 @@ function renderList(){
       +   '<div class="card-main">'
       +     '<div class="staff-head">'
       +       '<span class="staff-name">'+escapeHtml(s.name||"(氏名未設定)")+'</span>'
+      +       '<span class="staff-id">'+escapeHtml(normStaffId(s.staffId))+'</span>'
       +       activeBadge + adminBadge
       +     '</div>'
       +     '<div class="staff-sub">'+fac+'・'+job+'／'+escapeHtml(shift)
