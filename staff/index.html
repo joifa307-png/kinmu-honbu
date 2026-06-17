@@ -216,6 +216,7 @@ const SHIFT_MASTER = [
   {shiftKey:"minami_kaigo_hankin", facilityId:"minami", jobType:"kaigo",    label:"半勤"},
   {shiftKey:"minami_kaigo_chiban", facilityId:"minami", jobType:"kaigo",    label:"遅番"},
   {shiftKey:"minami_kaigo_yakin",  facilityId:"minami", jobType:"kaigo",    label:"夜勤"},
+  {shiftKey:"minami_kaigo_tokutei", facilityId:"minami", jobType:"kaigo_toku", label:"日勤"},
   {shiftKey:"minami_chori_a",      facilityId:"minami", jobType:"chori",    label:"調理A"},
   {shiftKey:"minami_chori_b",      facilityId:"minami", jobType:"chori",    label:"調理B"},
   {shiftKey:"hibari_helper_normal",   facilityId:"hibari", jobType:"helper",   label:"通常"},
@@ -224,7 +225,7 @@ const SHIFT_MASTER = [
   {shiftKey:"link_jimu_part",      facilityId:"link",   jobType:"jimu",     label:"パート"}
 ];
 const FACILITY_LABEL = {nishi:"おひさま西", minami:"南のおひさま", hibari:"ひばり", link:"リンク"};
-const JOB_LABEL = {kaigo:"介護職員", chori:"調理スタッフ", helper:"ヘルパー", caremane:"ケアマネージャー", jimu:"事務スタッフ"};
+const JOB_LABEL = {kaigo:"介護職員", kaigo_toku:"介護職員（特）", chori:"調理スタッフ", helper:"ヘルパー", caremane:"ケアマネージャー", jimu:"事務スタッフ"};
 
 /* shiftMaster から導出するヘルパー */
 function facilities(){
