@@ -37,6 +37,7 @@
   }
   a.btn-link:hover{background:#f1f3f7;}
   a.btn-link:focus-visible{outline:3px solid #9ec1ff; outline-offset:1px;}
+  a.btn-link.toolbar-link{min-height:44px; padding:8px 14px; font-size:15px;}
   .btn-primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600;}
   .btn-primary:hover{background:var(--accent-d);}
   .btn-lg{width:100%; font-size:18px; padding:14px;}
@@ -106,7 +107,6 @@
 <body>
 <header>
   <h1>スタッフ管理</h1>
-  <a class="btn-link" href="https://joifa307-png.github.io/kinmu-honbu/">【本部集計画面へ】</a>
   <button id="btnReload">再読込</button>
   <button id="btnExport">JSONバックアップ</button>
   <button class="btn-primary" id="btnNew">＋ 新規登録</button>
@@ -115,7 +115,9 @@
 <div class="wrap">
   <div class="toolbar">
     <select id="facilityFilter"><option value="">すべての事業所</option></select>
-    <span class="grow muted" id="count">読み込み中…</span>
+    <span class="muted" id="count">読み込み中…</span>
+    <a class="btn-link toolbar-link" href="https://joifa307-png.github.io/kinmu-honbu/">出勤簿（本部）</a>
+    <span class="grow"></span>
     <label class="toggle"><input type="checkbox" id="showRetired"> 退職者も表示</label>
   </div>
   <div id="list"></div>
