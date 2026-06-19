@@ -97,6 +97,29 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 .personal-page{margin-bottom:24px}
 .personal-page-title{font-size:1rem;font-weight:700;margin-bottom:4px}
 .personal-page-sub{font-size:.85rem;color:#6b6562;margin-bottom:10px}
+.btn-edit-rec{padding:4px 10px;font-size:.75rem}
+
+/* 訂正モーダル */
+.edit-overlay{position:fixed;inset:0;background:rgba(55,50,47,.45);z-index:100;display:none;align-items:flex-start;justify-content:center;padding:16px;overflow:auto}
+.edit-overlay.open{display:flex}
+.edit-modal{background:#FCFBFA;border-radius:14px;width:100%;max-width:520px;padding:18px 20px;margin:20px 0;box-shadow:0 4px 20px rgba(55,50,47,.15)}
+.edit-modal h2{margin:0 0 14px;font-size:1.05rem;color:#0f6e56}
+.edit-field{margin-bottom:12px}
+.edit-field label{display:block;font-size:.82rem;font-weight:600;color:#6b6562;margin-bottom:4px}
+.edit-field select,.edit-field input[type=text],.edit-field input[type=number],.edit-field textarea{width:100%;border:2px solid #d8d2ce;border-radius:10px;padding:8px 12px;font-size:.88rem;font-family:inherit;background:#fff;color:#37322f}
+.edit-field textarea{min-height:64px;resize:vertical}
+.edit-field input[readonly]{background:#f5f3f1;color:#6b6562}
+.edit-row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.edit-calc{background:#dcefe2;border-radius:10px;padding:10px 12px;font-size:.9rem;font-weight:600;color:#0f6e56;margin-bottom:12px}
+.edit-check{display:flex;align-items:center;gap:8px;font-size:.88rem;font-weight:600}
+.edit-check input{width:18px;height:18px}
+.edit-section{display:none}
+.edit-section.show{display:block}
+.edit-err{color:#a32d2d;font-size:.85rem;margin:8px 0;display:none}
+.edit-err.show{display:block}
+.edit-actions{display:flex;gap:10px;margin-top:16px}
+.edit-actions .btn{flex:1}
+.edit-hint{font-size:.78rem;color:#6b6562;margin-top:4px}
 
 /* 印刷用 */
 .print-title{display:none}
@@ -226,6 +249,7 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
                 <th class="num">実働</th>
                 <th class="num">残業</th>
                 <th>備考</th>
+                <th class="no-print">訂正</th>
               </tr>
             </thead>
             <tbody id="personalBody"></tbody>
@@ -237,6 +261,88 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
   </div>
 
   <div id="personalPrintArea" class="personal-print-area" aria-hidden="true"></div>
+</div>
+
+<div class="edit-overlay no-print" id="editOverlay" aria-hidden="true">
+  <div class="edit-modal" role="dialog" aria-labelledby="editModalTitle">
+    <h2 id="editModalTitle">記録の訂正</h2>
+    <div class="edit-field">
+      <label for="editDate">日付</label>
+      <input type="text" id="editDate" readonly>
+    </div>
+    <div class="edit-field">
+      <label for="editStatus">区分</label>
+      <select id="editStatus">
+        <option value="work">勤務</option>
+        <option value="paid_leave">有給</option>
+        <option value="absence">欠勤</option>
+      </select>
+      <p class="edit-hint" id="editPaidHint" style="display:none">有給の承認状態（申請中・承認済み）は変更しません。</p>
+    </div>
+    <div class="edit-section" id="editWorkSection">
+      <div class="edit-field">
+        <label for="editShift">シフト</label>
+        <select id="editShift"></select>
+      </div>
+      <div class="edit-row2">
+        <div class="edit-field">
+          <label for="editStart">開始</label>
+          <select id="editStart"></select>
+        </div>
+        <div class="edit-field">
+          <label for="editEnd">終了</label>
+          <select id="editEnd"></select>
+        </div>
+      </div>
+      <div class="edit-field">
+        <label for="editBreak">休憩（分）</label>
+        <input type="number" id="editBreak" min="0" step="10" inputmode="numeric">
+      </div>
+      <div class="edit-calc" id="editCalc">実働 —　残業 —</div>
+      <div class="edit-field">
+        <label class="edit-check"><input type="checkbox" id="editLateFlag"> 遅刻・早退</label>
+      </div>
+      <div class="edit-field" id="editLateNoteWrap" style="display:none">
+        <label for="editLateNote">遅刻・早退の理由</label>
+        <input type="text" id="editLateNote" maxlength="200">
+      </div>
+      <div class="edit-section" id="editOtSection">
+        <div class="edit-field">
+          <label for="editOtReason">残業理由</label>
+          <select id="editOtReason">
+            <option value="">— 選択 —</option>
+          </select>
+        </div>
+        <div class="edit-field" id="editOtNoteWrap" style="display:none">
+          <label for="editOtNote">残業理由（その他）</label>
+          <input type="text" id="editOtNote" maxlength="200">
+        </div>
+      </div>
+    </div>
+    <div class="edit-section" id="editAbsSection">
+      <div class="edit-field">
+        <label for="editAbsReason">欠勤理由</label>
+        <select id="editAbsReason">
+          <option value="">— 選択 —</option>
+          <option value="sick">病欠</option>
+          <option value="other">その他</option>
+        </select>
+      </div>
+      <div class="edit-field" id="editAbsNoteWrap" style="display:none">
+        <label for="editAbsNote">欠勤理由（その他）</label>
+        <input type="text" id="editAbsNote" maxlength="200">
+      </div>
+    </div>
+    <div class="edit-field">
+      <label for="editMemo">特記事項（memo）</label>
+      <textarea id="editMemo" maxlength="500"></textarea>
+    </div>
+    <p class="edit-err" id="editErr"></p>
+    <div class="edit-actions">
+      <button type="button" class="btn" id="editCancel">キャンセル</button>
+      <button type="button" class="btn btn-primary" id="editSave">保存</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -259,6 +365,9 @@ const OVERTIME_REASON_LABEL = {
   shortage: '人員不足・業務集中',
   other: 'その他'
 };
+
+const MINUTES_10 = [0, 10, 20, 30, 40, 50];
+const OVERTIME_THRESHOLD_MIN = 60;
 
 /* ── マスタ（スタッフアプリ複製） ── */
 const shiftMaster = {
@@ -450,6 +559,86 @@ function fmtDurJa(min) {
   return `${h}h${m}分`;
 }
 
+/* ── 計算（スタッフ入力アプリと同一） ── */
+function spanMin(start, end) {
+  let s = end - start;
+  if (s <= 0) s += 1440;
+  return s;
+}
+function computeWorkMin(start, end, breakMin) {
+  return spanMin(start, end) - breakMin;
+}
+function computeOvertime(actualWorkMin, shiftWorkMin) {
+  return Math.max(0, actualWorkMin - shiftWorkMin);
+}
+
+function isEmpty(v) {
+  if (v === null || v === undefined) return true;
+  if (typeof v === 'string' && v.trim() === '') return true;
+  return false;
+}
+
+function shiftsForStaff(staff) {
+  if (!staff) return [];
+  return Object.values(shiftMaster)
+    .filter(s => s.active && s.facilityId === staff.facilityId && s.jobType === staff.jobType)
+    .sort((a, b) => a.order - b.order);
+}
+
+function buildTimeSelectOptions() {
+  const opts = [];
+  for (let h = 0; h < 24; h++) {
+    for (const m of MINUTES_10) {
+      const min = h * 60 + m;
+      opts.push({ min, label: fmtClock(min) });
+    }
+  }
+  return opts;
+}
+
+function fillTimeSelect(el, includeNextDay) {
+  const opts = buildTimeSelectOptions();
+  el.innerHTML = '';
+  if (includeNextDay) {
+    const gDay = document.createElement('optgroup');
+    gDay.label = '当日';
+    opts.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = `d:${o.min}`;
+      opt.textContent = o.label;
+      gDay.appendChild(opt);
+    });
+    el.appendChild(gDay);
+    const gNext = document.createElement('optgroup');
+    gNext.label = '翌日';
+    opts.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = `n:${o.min}`;
+      opt.textContent = `翌 ${o.label}`;
+      gNext.appendChild(opt);
+    });
+    el.appendChild(gNext);
+  } else {
+    opts.forEach(o => {
+      const opt = document.createElement('option');
+      opt.value = String(o.min);
+      opt.textContent = o.label;
+      el.appendChild(opt);
+    });
+  }
+}
+
+function parseEndSelectValue(val) {
+  if (!val) return 0;
+  if (val.includes(':')) return Number(val.split(':')[1]) || 0;
+  return Number(val) || 0;
+}
+
+function endSelectValue(startMin, endMin) {
+  if (endMin <= startMin) return `n:${endMin}`;
+  return `d:${endMin}`;
+}
+
 function periodDates(from, to) {
   const dates = [];
   let d = from;
@@ -520,6 +709,7 @@ function fmtDow(dateStr) {
 function buildPersonalDayRow(dateStr, rec) {
   if (!rec) {
     return {
+      dateKey: dateStr,
       date: fmtDateShort(dateStr),
       dow: fmtDow(dateStr),
       status: '—',
@@ -533,6 +723,7 @@ function buildPersonalDayRow(dateStr, rec) {
     };
   }
   return {
+    dateKey: dateStr,
     date: fmtDateShort(dateStr),
     dow: fmtDow(dateStr),
     status: personalStatusLabel(rec),
@@ -578,9 +769,12 @@ function personalRowToArray(row) {
   return [row.date, row.dow, row.status, row.shift, row.time, row.brk, row.work, row.ot, row.note];
 }
 
-function buildPersonalTableBodyHtml(rows) {
+function buildPersonalTableBodyHtml(rows, withEdit) {
   return rows.map(row => {
     const cls = row.empty ? ' class="empty"' : '';
+    const editCell = withEdit
+      ? `<td class="no-print"><button type="button" class="btn btn-edit-rec" data-date="${esc(row.dateKey)}">訂正</button></td>`
+      : '';
     return `<tr${cls}>
       <td>${esc(row.date)}</td>
       <td>${esc(row.dow)}</td>
@@ -591,6 +785,7 @@ function buildPersonalTableBodyHtml(rows) {
       <td class="num">${esc(row.work)}</td>
       <td class="num">${esc(row.ot)}</td>
       <td>${esc(row.note)}</td>
+      ${editCell}
     </tr>`;
   }).join('');
 }
@@ -1050,7 +1245,10 @@ function renderPersonal() {
   $('personalStatus').style.display = 'none';
   $('personalContent').style.display = 'block';
   $('personalHeading').innerHTML = personalHeadingHtml(staff);
-  $('personalBody').innerHTML = buildPersonalTableBodyHtml(rows);
+  $('personalBody').innerHTML = buildPersonalTableBodyHtml(rows, true);
+  $('personalBody').querySelectorAll('.btn-edit-rec').forEach(btn => {
+    btn.addEventListener('click', () => openEditModal(btn.getAttribute('data-date')));
+  });
   $('personalTotals').innerHTML = personalTotalsHtml(agg);
 }
 
@@ -1314,6 +1512,244 @@ function changePeriod(delta) {
   loadData();
 }
 
+/* ── 記録訂正 ── */
+let editDate = '';
+let editStaffId = '';
+let editOrigRecord = null;
+let editSaving = false;
+
+function findPeriodRecord(date, staffId) {
+  return periodRecords.find(r => r.date === date && String(r.staffId) === String(staffId)) || null;
+}
+
+function applyHonbuCorrectionMemo(memo, today) {
+  const stamp = `【本部訂正 ${today}】`;
+  const m = String(memo || '').trim();
+  if (m.includes(stamp)) return m;
+  return m ? `${stamp}${m}` : stamp;
+}
+
+function readEditCalc() {
+  const shiftKey = $('editShift').value;
+  const shift = shiftMaster[shiftKey];
+  const startMin = Number($('editStart').value) || 0;
+  const endMin = parseEndSelectValue($('editEnd').value);
+  const breakMin = Number($('editBreak').value) || 0;
+  const work = computeWorkMin(startMin, endMin, breakMin);
+  const ot = computeOvertime(work, shift ? shift.workMin : 0);
+  return { startMin, endMin, breakMin, work, ot, shift };
+}
+
+function updateEditFormVisibility() {
+  const status = $('editStatus').value;
+  $('editWorkSection').classList.toggle('show', status === 'work');
+  $('editAbsSection').classList.toggle('show', status === 'absence');
+  $('editPaidHint').style.display = status === 'paid_leave' ? 'block' : 'none';
+  $('editLateNoteWrap').style.display = $('editLateFlag').checked && status === 'work' ? 'block' : 'none';
+  const { ot } = status === 'work' ? readEditCalc() : { ot: 0 };
+  const showOt = status === 'work' && ot >= OVERTIME_THRESHOLD_MIN;
+  $('editOtSection').classList.toggle('show', showOt);
+  $('editOtNoteWrap').style.display = showOt && $('editOtReason').value === 'other' ? 'block' : 'none';
+  $('editAbsNoteWrap').style.display = status === 'absence' && $('editAbsReason').value === 'other' ? 'block' : 'none';
+  if (status === 'work') {
+    const { work, ot: otMin } = readEditCalc();
+    $('editCalc').textContent = `実働 ${fmtDurJa(work)}　残業 ${otMin > 0 ? fmtDurJa(otMin) : '—'}`;
+  }
+}
+
+function applyShiftDefaults(shiftKey) {
+  const shift = shiftMaster[shiftKey];
+  if (!shift) return;
+  $('editStart').value = String(shift.start);
+  $('editEnd').value = endSelectValue(shift.start, shift.end);
+  $('editBreak').value = String(shift.breakMin || 0);
+  updateEditFormVisibility();
+}
+
+function populateEditOtReasonSelect(selected) {
+  const sel = $('editOtReason');
+  sel.innerHTML = '<option value="">— 選択 —</option>';
+  Object.entries(OVERTIME_REASON_LABEL).forEach(([k, label]) => {
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+  if (selected && !OVERTIME_REASON_LABEL[selected] && /[\u3040-\u30ff\u4e00-\u9fff]/.test(selected)) {
+    const opt = document.createElement('option');
+    opt.value = selected;
+    opt.textContent = selected;
+    sel.appendChild(opt);
+  }
+  sel.value = selected || '';
+}
+
+function openEditModal(dateStr) {
+  const staff = selectedPersonalStaffId ? staffMap[selectedPersonalStaffId] : null;
+  if (!staff) return;
+  editDate = dateStr;
+  editStaffId = staff.staffId;
+  editOrigRecord = findPeriodRecord(dateStr, staff.staffId);
+  const rec = editOrigRecord;
+  const shifts = shiftsForStaff(staff);
+
+  $('editModalTitle').textContent = `記録の訂正 — ${staff.name || staff.staffId}`;
+  $('editDate').value = fmtDateWithDow(dateStr);
+  $('editErr').classList.remove('show');
+  $('editErr').textContent = '';
+
+  const shiftSel = $('editShift');
+  shiftSel.innerHTML = shifts.map(s =>
+    `<option value="${s.shiftKey}">${esc(s.label)}</option>`
+  ).join('');
+
+  const defaultShift = rec?.shiftKey || staff.defaultShiftKey || (shifts[0] && shifts[0].shiftKey) || '';
+  if (defaultShift) shiftSel.value = defaultShift;
+
+  $('editStatus').value = rec?.status || 'work';
+
+  const startMin = rec?.start != null && rec.start !== '' ? Number(rec.start) : (shiftMaster[defaultShift]?.start ?? 510);
+  const endMin = rec?.end != null && rec.end !== '' ? Number(rec.end) : (shiftMaster[defaultShift]?.end ?? 1050);
+  $('editStart').value = String(startMin);
+  $('editEnd').value = endSelectValue(startMin, endMin);
+  $('editBreak').value = String(rec?.breakMin != null && rec.breakMin !== '' ? rec.breakMin : (shiftMaster[defaultShift]?.breakMin ?? 60));
+
+  $('editLateFlag').checked = !!(rec?.lateFlag);
+  $('editLateNote').value = rec?.lateNote || '';
+  populateEditOtReasonSelect(rec?.overtimeReason || '');
+  $('editOtNote').value = rec?.overtimeNote || '';
+  $('editAbsReason').value = rec?.absenceReason || '';
+  $('editAbsNote').value = rec?.absenceNote || '';
+  $('editMemo').value = rec?.memo || '';
+
+  updateEditFormVisibility();
+  $('editOverlay').classList.add('open');
+  $('editOverlay').setAttribute('aria-hidden', 'false');
+}
+
+function closeEditModal() {
+  $('editOverlay').classList.remove('open');
+  $('editOverlay').setAttribute('aria-hidden', 'true');
+}
+
+function validateEditForm() {
+  const status = $('editStatus').value;
+  if (status === 'work') {
+    if (!$('editShift').value) return 'シフトを選んでください。';
+    const { ot } = readEditCalc();
+    if ($('editLateFlag').checked && isEmpty($('editLateNote').value)) {
+      return '遅刻・早退の理由を入力してください。';
+    }
+    if (ot >= OVERTIME_THRESHOLD_MIN) {
+      if (!$('editOtReason').value) return '残業が1時間以上です。残業理由を選んでください。';
+      if ($('editOtReason').value === 'other' && isEmpty($('editOtNote').value)) {
+        return '「その他」の残業理由を入力してください。';
+      }
+    }
+  }
+  if (status === 'absence') {
+    if (!$('editAbsReason').value) return '欠勤の理由を選んでください。';
+    if ($('editAbsReason').value === 'other' && isEmpty($('editAbsNote').value)) {
+      return '「その他」の欠勤理由を入力してください。';
+    }
+  }
+  return '';
+}
+
+function buildEditRecord() {
+  const status = $('editStatus').value;
+  const orig = editOrigRecord || {};
+  const shiftKey = $('editShift').value;
+  const { startMin, endMin, breakMin, work, ot } = readEditCalc();
+  const lateFlag = $('editLateFlag').checked;
+  const showOt = status === 'work' && ot >= OVERTIME_THRESHOLD_MIN;
+  const otReason = $('editOtReason').value || null;
+  let memo = $('editMemo').value.trim();
+  memo = applyHonbuCorrectionMemo(memo, todayStr());
+
+  return {
+    date: editDate,
+    staffId: editStaffId,
+    status,
+    shiftKey: status === 'work' ? shiftKey : (orig.shiftKey || shiftKey || ''),
+    start: status === 'work' ? startMin : (orig.start ?? ''),
+    end: status === 'work' ? endMin : (orig.end ?? ''),
+    breakMin: status === 'work' ? breakMin : (orig.breakMin ?? ''),
+    workMin: status === 'work' ? work : 0,
+    overtimeMin: status === 'work' ? ot : 0,
+    lateFlag: status === 'work' && lateFlag,
+    lateNote: status === 'work' && lateFlag ? $('editLateNote').value.trim() : '',
+    holidayWorkFlag: status === 'work' ? !!orig.holidayWorkFlag : false,
+    absenceReason: status === 'absence' ? $('editAbsReason').value : null,
+    absenceNote: status === 'absence' ? $('editAbsNote').value.trim() : '',
+    overtimeReason: showOt ? otReason : null,
+    overtimeNote: showOt && otReason === 'other' ? $('editOtNote').value.trim() : '',
+    memo,
+    approvalStatus: orig.approvalStatus || '',
+    approvedBy: orig.approvedBy || '',
+    approvedAt: orig.approvedAt || '',
+    createdBy: orig.createdBy || editStaffId,
+    createdAt: orig.createdAt || new Date().toISOString()
+  };
+}
+
+async function saveEditRecord() {
+  if (editSaving) return;
+  const err = validateEditForm();
+  if (err) {
+    $('editErr').textContent = err;
+    $('editErr').classList.add('show');
+    return;
+  }
+  $('editErr').classList.remove('show');
+  const record = buildEditRecord();
+  editSaving = true;
+  $('editSave').disabled = true;
+  $('editSave').textContent = '保存中…';
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(record)
+    });
+    const data = await res.json();
+    if (!data || !data.ok) throw new Error(data?.error || '保存に失敗しました。');
+    const saved = data.record || record;
+    const idx = periodRecords.findIndex(r => r.date === saved.date && String(r.staffId) === String(saved.staffId));
+    if (idx >= 0) periodRecords[idx] = saved;
+    else periodRecords.push(saved);
+    closeEditModal();
+    renderPersonal();
+    renderSummary();
+    renderToday();
+  } catch (e) {
+    $('editErr').textContent = String(e.message || e);
+    $('editErr').classList.add('show');
+  } finally {
+    editSaving = false;
+    $('editSave').disabled = false;
+    $('editSave').textContent = '保存';
+  }
+}
+
+function initEditModal() {
+  fillTimeSelect($('editStart'), false);
+  fillTimeSelect($('editEnd'), true);
+  populateEditOtReasonSelect('');
+
+  ['editStatus', 'editShift', 'editStart', 'editEnd', 'editBreak', 'editLateFlag', 'editOtReason', 'editAbsReason'].forEach(id => {
+    $(id).addEventListener('change', () => {
+      if (id === 'editShift') applyShiftDefaults($('editShift').value);
+      updateEditFormVisibility();
+    });
+  });
+  $('editLateNote').addEventListener('input', updateEditFormVisibility);
+  $('editOtNote').addEventListener('input', updateEditFormVisibility);
+  $('editAbsNote').addEventListener('input', updateEditFormVisibility);
+  $('editCancel').addEventListener('click', closeEditModal);
+  $('editSave').addEventListener('click', saveEditRecord);
+}
+
 /* ── 初期化 ── */
 function init() {
   renderHeader();
@@ -1334,6 +1770,7 @@ function init() {
     tab.addEventListener('click', () => switchTab(tab.dataset.tab));
   });
 
+  initEditModal();
   loadData();
   loadTodayData();
 }
