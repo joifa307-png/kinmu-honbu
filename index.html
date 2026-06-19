@@ -251,6 +251,15 @@ const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 const EXPORT_HEADERS = ['氏名', '所属', '職種', '出勤日数', '休出日数', '有休日数', '欠勤日数', '実働合計', '残業合計', '遅早回数', '有給残'];
 const PERSONAL_HEADERS = ['日付', '曜日', '区分', 'シフト名', '時間', '休憩', '実働', '残業', '備考'];
 
+/** 残業理由コード→表示名（後から追記可。未知コードはそのまま表示） */
+const OVERTIME_REASON_LABEL = {
+  care: '利用者対応',
+  records: '記録・書類作成',
+  meeting: '会議・研修',
+  shortage: '人員不足・業務集中',
+  other: 'その他'
+};
+
 /* ── マスタ（スタッフアプリ複製） ── */
 const shiftMaster = {
   nishi_kaigo_nikkin:  { shiftKey: 'nishi_kaigo_nikkin',  facilityId: 'nishi',  jobType: 'kaigo',    label: '日勤',  start: 510,  end: 1050, breakMin: 60,  workMin: 480, order: 1, active: true },
@@ -458,11 +467,31 @@ function personalStatusLabel(rec) {
   return '勤務';
 }
 
-function buildPersonalNote(rec) {
+function overtimeReasonLabel(raw) {
+  if (raw == null || String(raw).trim() === '') return '';
+  const s = String(raw).trim();
+  if (OVERTIME_REASON_LABEL[s]) return OVERTIME_REASON_LABEL[s];
+  if (/[\u3040-\u30ff\u4e00-\u9fff]/.test(s)) return s;
+  return s;
+}
+
+function hasOvertimeReasonOrTime(rec) {
+  return Number(rec.overtimeMin) > 0 || !!(rec.overtimeReason && String(rec.overtimeReason).trim());
+}
+
+function buildRecordNote(rec) {
   if (!rec) return '—';
   const parts = [];
   if (rec.lateFlag) {
-    parts.push('遅刻早退' + (rec.lateNote && String(rec.lateNote).trim() ? `：${rec.lateNote}` : ''));
+    const late = rec.lateNote && String(rec.lateNote).trim();
+    parts.push(late ? `遅早：${late}` : '遅早');
+  }
+  if (hasOvertimeReasonOrTime(rec)) {
+    const reason = overtimeReasonLabel(rec.overtimeReason);
+    const otNote = rec.overtimeNote && String(rec.overtimeNote).trim();
+    let ot = reason ? `残業：${reason}` : '残業';
+    if (otNote) ot += `（${otNote}）`;
+    parts.push(ot);
   }
   if (rec.holidayWorkFlag) parts.push('休日出勤');
   if (rec.status === 'absence') {
@@ -472,6 +501,10 @@ function buildPersonalNote(rec) {
   }
   if (rec.memo && String(rec.memo).trim()) parts.push(String(rec.memo).trim());
   return parts.length ? parts.join('／') : '—';
+}
+
+function buildPersonalNote(rec) {
+  return buildRecordNote(rec);
 }
 
 function fmtDateShort(dateStr) {
@@ -944,7 +977,8 @@ function renderSummary() {
           const shift = rec.status === 'work' ? esc(shiftLabel(rec.shiftKey)) : '—';
           const work = rec.status === 'work' ? H(rec.workMin) : '—';
           const ot = rec.status === 'work' && Number(rec.overtimeMin) > 0 ? H(rec.overtimeMin) : '—';
-          const memo = rec.memo && String(rec.memo).trim() ? esc(rec.memo) : '';
+          const note = buildRecordNote(rec);
+          const noteDisplay = note === '—' ? '' : esc(note);
           const dupCls = isDupRecord(rec, dupRecordKeys) ? ' class="dup-row"' : '';
           detailHtml += `<tr${dupCls}>
             <td>${fmtDateWithDow(rec.date)}</td>
@@ -952,7 +986,7 @@ function renderSummary() {
             <td>${shift}</td>
             <td class="num">${work}</td>
             <td class="num">${ot}</td>
-            <td>${memo}</td>
+            <td>${noteDisplay}</td>
           </tr>`;
         });
       }
