@@ -64,6 +64,17 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 .dup-row,.dup-row td{color:#a32d2d!important;font-weight:600}
 .detail-table tr.dup-row td{color:#a32d2d!important;font-weight:600}
 .dup-mark{color:#a32d2d;font-weight:700;margin-right:4px}
+.memo-alert{background:#e6f1fb;border:2px solid #b8d4f0;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:.85rem}
+.memo-alert-title{font-weight:700;margin-bottom:8px;color:#185fa5}
+.memo-card{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #d0e3f5}
+.memo-card:last-child{border-bottom:none;padding-bottom:0}
+.memo-card:first-of-type{padding-top:0}
+.memo-card-body{flex:1;min-width:0}
+.memo-card-meta{font-weight:600;color:#1f6feb;margin-bottom:2px}
+.memo-card-text{color:#1f6feb;line-height:1.5;word-break:break-word}
+.btn-memo-confirm{flex:0 0 auto;padding:6px 12px;font-size:.78rem;border:2px solid #b8d4f0;background:#fff;color:#185fa5;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;white-space:nowrap}
+.btn-memo-confirm:hover{border-color:#185fa5;background:#f5faff}
+.btn-memo-confirm:disabled{opacity:.5;cursor:default}
 
 /* 行展開明細 */
 .detail-row td{padding:0;border-bottom:1px solid #e8e4e1;background:#faf9f8}
@@ -177,6 +188,7 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
     <div class="card">
       <div class="today-count" id="todayCount" style="display:none"></div>
       <div id="todayDupAlert" style="display:none"></div>
+      <div id="todayMemoAlert" style="display:none"></div>
       <div id="todayStatus" class="status-msg">読み込み中…</div>
       <div class="table-wrap" id="todayTableWrap" style="display:none">
         <table id="todayTable">
@@ -200,6 +212,7 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
   <div class="tab-panel active" data-tab="summary" id="panelSummary">
     <div class="card">
       <div id="summaryDupAlert" style="display:none"></div>
+      <div id="summaryMemoAlert" style="display:none"></div>
       <div id="summaryStatus" class="status-msg">読み込み中…</div>
       <div class="table-wrap" id="summaryTableWrap" style="display:none">
         <table id="summaryTable">
@@ -473,6 +486,96 @@ function renderDupAlert(elId, alerts) {
 
 function isDupRecord(rec, dupRecordKeys) {
   return dupRecordKeys.has(recKey(rec));
+}
+
+const MEMO_CONFIRMED_MARK = '【確認済】';
+
+function filterMemoItems(records) {
+  const items = [];
+  records.forEach(rec => {
+    const memo = rec.memo && String(rec.memo).trim();
+    if (!memo || memo.includes(MEMO_CONFIRMED_MARK)) return;
+    const staff = staffById(rec.staffId);
+    if (facilityFilter !== 'all' && (!staff || staff.facilityId !== facilityFilter)) return;
+    items.push({ rec, memo });
+  });
+  items.sort((a, b) => {
+    const dc = (a.rec.date || '').localeCompare(b.rec.date || '');
+    if (dc !== 0) return dc;
+    return staffName(a.rec.staffId).localeCompare(staffName(b.rec.staffId), 'ja');
+  });
+  return items;
+}
+
+function renderMemoAlert(elId, records) {
+  const el = $(elId);
+  const items = filterMemoItems(records);
+  if (!items.length) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  const cards = items.map(({ rec, memo }) => `
+    <div class="memo-card">
+      <div class="memo-card-body">
+        <div class="memo-card-meta">${fmtDateWithDow(rec.date)}　${esc(staffName(rec.staffId))}</div>
+        <div class="memo-card-text">${esc(memo)}</div>
+      </div>
+      <button type="button" class="btn-memo-confirm" data-date="${esc(rec.date)}" data-staff-id="${esc(String(rec.staffId))}">確認済み</button>
+    </div>
+  `).join('');
+  el.style.display = 'block';
+  el.innerHTML = `<div class="memo-alert"><div class="memo-alert-title">特記事項</div>${cards}</div>`;
+  el.querySelectorAll('.btn-memo-confirm').forEach(btn => {
+    btn.addEventListener('click', () => confirmMemoRecord(btn.getAttribute('data-date'), btn.getAttribute('data-staff-id'), btn));
+  });
+}
+
+function applyMemoConfirmed(memo) {
+  const m = String(memo || '').trim();
+  if (!m || m.includes(MEMO_CONFIRMED_MARK)) return m;
+  return `${MEMO_CONFIRMED_MARK}${m}`;
+}
+
+function findRecord(date, staffId) {
+  const key = String(staffId);
+  return periodRecords.find(r => r.date === date && String(r.staffId) === key)
+    || todayRecords.find(r => r.date === date && String(r.staffId) === key)
+    || null;
+}
+
+function updateRecordInCache(saved) {
+  [periodRecords, todayRecords].forEach(arr => {
+    const idx = arr.findIndex(r => r.date === saved.date && String(r.staffId) === String(saved.staffId));
+    if (idx >= 0) arr[idx] = saved;
+  });
+}
+
+async function confirmMemoRecord(date, staffId, btn) {
+  const rec = findRecord(date, staffId);
+  if (!rec) return;
+  const msg = 'この特記事項を確認済みにします。一覧から消えますが、記録には「【確認済】」付きで残ります。よろしいですか？';
+  if (!confirm(msg)) return;
+  const newMemo = applyMemoConfirmed(rec.memo);
+  const payload = { ...rec, memo: newMemo };
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!data || !data.ok) throw new Error(data?.error || '保存に失敗しました。');
+    const saved = data.record || payload;
+    updateRecordInCache(saved);
+    renderToday();
+    renderSummary();
+    renderPersonal();
+  } catch (e) {
+    if (btn) btn.disabled = false;
+    alert('確認済みの保存に失敗しました：' + (e.message || e));
+  }
 }
 
 /* ── 締め期間（月度） ── */
@@ -1014,6 +1117,8 @@ function renderTodayError(msg) {
   $('todayCount').style.display = 'none';
   $('todayDupAlert').style.display = 'none';
   $('todayDupAlert').innerHTML = '';
+  $('todayMemoAlert').style.display = 'none';
+  $('todayMemoAlert').innerHTML = '';
   $('todayStatus').style.display = 'block';
   $('todayStatus').className = 'status-msg error';
   $('todayStatus').innerHTML = `${msg}<br><button type="button" class="retry-btn" id="todayRetryBtn">再読込</button>`;
@@ -1030,6 +1135,8 @@ function renderToday() {
     $('todayCount').style.display = 'none';
     $('todayDupAlert').style.display = 'none';
     $('todayDupAlert').innerHTML = '';
+    $('todayMemoAlert').style.display = 'none';
+    $('todayMemoAlert').innerHTML = '';
     $('todayStatus').style.display = 'block';
     $('todayStatus').className = 'status-msg';
     $('todayStatus').textContent = '読み込み中…';
@@ -1043,6 +1150,7 @@ function renderToday() {
   if (!rows.length) {
     $('todayCount').style.display = 'none';
     renderDupAlert('todayDupAlert', alerts);
+    renderMemoAlert('todayMemoAlert', todayRecords);
     $('todayStatus').style.display = 'block';
     $('todayStatus').className = 'status-msg';
     $('todayStatus').textContent = '本日の登録はまだありません';
@@ -1053,6 +1161,7 @@ function renderToday() {
   $('todayCount').style.display = 'block';
   $('todayCount').innerHTML = `本日 <span>${rows.length}</span>名登録`;
   renderDupAlert('todayDupAlert', alerts);
+  renderMemoAlert('todayMemoAlert', todayRecords);
   $('todayStatus').style.display = 'none';
   $('todayTableWrap').style.display = 'block';
 
@@ -1086,6 +1195,8 @@ function renderToday() {
 function renderSummaryError(msg) {
   $('summaryDupAlert').style.display = 'none';
   $('summaryDupAlert').innerHTML = '';
+  $('summaryMemoAlert').style.display = 'none';
+  $('summaryMemoAlert').innerHTML = '';
   $('summaryStatus').style.display = 'block';
   $('summaryStatus').className = 'status-msg error';
   $('summaryStatus').innerHTML = `${msg}<br><button type="button" class="retry-btn" id="retryBtn">再読込</button>`;
@@ -1101,6 +1212,8 @@ function renderSummary() {
   if (loading) {
     $('summaryDupAlert').style.display = 'none';
     $('summaryDupAlert').innerHTML = '';
+    $('summaryMemoAlert').style.display = 'none';
+    $('summaryMemoAlert').innerHTML = '';
     $('summaryStatus').style.display = 'block';
     $('summaryStatus').className = 'status-msg';
     $('summaryStatus').textContent = '読み込み中…';
@@ -1111,6 +1224,7 @@ function renderSummary() {
   const rows = buildSummaryRows();
   const { dupRecordKeys, alerts } = detectShiftDuplicates(periodRecords);
   renderDupAlert('summaryDupAlert', alerts);
+  renderMemoAlert('summaryMemoAlert', periodRecords);
 
   if (!rows.length) {
     $('summaryStatus').style.display = 'block';
