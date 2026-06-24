@@ -549,6 +549,7 @@ function updateRecordInCache(saved) {
     const idx = arr.findIndex(r => r.date === saved.date && String(r.staffId) === String(saved.staffId));
     if (idx >= 0) arr[idx] = saved;
   });
+  syncPeriodCacheFromMemory();
 }
 
 async function confirmMemoRecord(date, staffId, btn) {
@@ -996,13 +997,95 @@ async function fetchAllRecordsByPeriod(from, to) {
   return data.records || [];
 }
 
-async function fetchRecordsByStaff(staffId, from, to) {
-  const url = `${GAS_URL}?type=recordsByStaff&staffId=${encodeURIComponent(staffId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-  const res = await fetch(url);
-  if (!res.ok) return [];
-  const data = await res.json();
-  if (!data.ok) return [];
-  return data.records || [];
+const PAID_LEAVE_DEFAULT_FROM = '2020-01-01';
+const periodDataCache = new Map();
+
+function periodCacheKey(p) {
+  return `${p.from}_${p.to}`;
+}
+
+function minDateStr(a, b) {
+  return a < b ? a : b;
+}
+
+function maxDateStr(a, b) {
+  return a > b ? a : b;
+}
+
+function staffHasPaidLeaveBalance(staff) {
+  return staff.paidLeaveBalance !== null && staff.paidLeaveBalance !== undefined && staff.paidLeaveBalance !== '';
+}
+
+function paidLeaveFromForStaff(staff) {
+  return staff.paidLeaveAsOf ? addDays(staff.paidLeaveAsOf, 1) : PAID_LEAVE_DEFAULT_FROM;
+}
+
+function computeDataFetchRange(staffList, p) {
+  const today = todayStr();
+  let from = p.from;
+  let to = maxDateStr(p.to, today);
+  staffList.forEach(staff => {
+    if (!staffHasPaidLeaveBalance(staff)) return;
+    from = minDateStr(from, paidLeaveFromForStaff(staff));
+  });
+  return { from, to };
+}
+
+function splitFetchedRecords(allRecords, p, staffList) {
+  const today = todayStr();
+  const records = allRecords.filter(r => r.date >= p.from && r.date <= p.to);
+  const paidMap = {};
+  staffList.forEach(staff => {
+    if (!staffHasPaidLeaveBalance(staff)) {
+      paidMap[staff.staffId] = [];
+      return;
+    }
+    const from = paidLeaveFromForStaff(staff);
+    paidMap[staff.staffId] = allRecords.filter(r =>
+      r.staffId === staff.staffId && r.date >= from && r.date <= today
+    );
+  });
+  return { periodRecords: records, paidLeaveRecordsMap: paidMap };
+}
+
+function applyTodayRecordsFromAll(allRecords) {
+  const today = todayStr();
+  todayRecords = allRecords.filter(r => r.date === today);
+  todayDataLoaded = true;
+  todayLoading = false;
+  todayLoadError = null;
+}
+
+function snapshotPeriodCache() {
+  return {
+    staffMap: { ...staffMap },
+    periodRecords: periodRecords.slice(),
+    paidLeaveRecordsMap: Object.fromEntries(
+      Object.entries(paidLeaveRecordsMap).map(([k, v]) => [k, v.slice()])
+    ),
+    todayRecords: todayRecords.slice()
+  };
+}
+
+function restorePeriodCache(cached) {
+  staffMap = cached.staffMap;
+  periodRecords = cached.periodRecords;
+  paidLeaveRecordsMap = cached.paidLeaveRecordsMap;
+  todayRecords = cached.todayRecords;
+  todayDataLoaded = true;
+  todayLoading = false;
+  todayLoadError = null;
+}
+
+function syncPeriodCacheFromMemory() {
+  const key = periodCacheKey(period);
+  if (!periodDataCache.has(key)) return;
+  periodDataCache.set(key, snapshotPeriodCache());
+}
+
+function clearPeriodDataCache() {
+  periodDataCache.clear();
+  todayDataLoaded = false;
 }
 
 /* ── 状態 ── */
@@ -1019,6 +1102,7 @@ let loadError = null;
 let todayRecords = [];
 let todayLoading = false;
 let todayLoadError = null;
+let todayDataLoaded = false;
 
 const $ = id => document.getElementById(id);
 
@@ -1123,7 +1207,7 @@ function renderTodayError(msg) {
   $('todayStatus').className = 'status-msg error';
   $('todayStatus').innerHTML = `${msg}<br><button type="button" class="retry-btn" id="todayRetryBtn">再読込</button>`;
   $('todayTableWrap').style.display = 'none';
-  $('todayRetryBtn').addEventListener('click', loadTodayData);
+  $('todayRetryBtn').addEventListener('click', () => loadTodayData(true));
 }
 
 function renderToday() {
@@ -1201,7 +1285,7 @@ function renderSummaryError(msg) {
   $('summaryStatus').className = 'status-msg error';
   $('summaryStatus').innerHTML = `${msg}<br><button type="button" class="retry-btn" id="retryBtn">再読込</button>`;
   $('summaryTableWrap').style.display = 'none';
-  $('retryBtn').addEventListener('click', loadData);
+  $('retryBtn').addEventListener('click', () => loadData(true));
 }
 
 function renderSummary() {
@@ -1550,26 +1634,21 @@ function downloadBlob(blob, filename) {
 }
 
 /* ── データ読込 ── */
-async function loadPaidLeaveForStaff(staff) {
-  if (staff.paidLeaveBalance === null || staff.paidLeaveBalance === undefined || staff.paidLeaveBalance === '') {
-    return { staffId: staff.staffId, records: [] };
-  }
-  const from = staff.paidLeaveAsOf ? addDays(staff.paidLeaveAsOf, 1) : '2020-01-01';
-  const to = todayStr();
-  const records = await fetchRecordsByStaff(staff.staffId, from, to);
-  return { staffId: staff.staffId, records };
-}
-
 function addDays(dateStr, delta) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(y, m - 1, d + delta);
   return ymd(dt);
 }
 
-async function loadTodayData() {
+async function loadTodayData(forceRefresh = false) {
   if (todayLoading) return;
+  if (!forceRefresh && todayDataLoaded) {
+    renderToday();
+    return;
+  }
   todayLoading = true;
   todayLoadError = null;
+  todayDataLoaded = false;
   renderToday();
 
   try {
@@ -1578,33 +1657,45 @@ async function loadTodayData() {
       staffMap = await fetchStaff();
     }
     todayRecords = await fetchAllRecordsByPeriod(today, today);
+    todayDataLoaded = true;
     todayLoading = false;
     renderToday();
   } catch (e) {
     todayLoading = false;
+    todayDataLoaded = false;
     todayLoadError = e.message || 'データの取得に失敗しました。';
     renderToday();
   }
 }
 
-async function loadData() {
+async function loadData(forceRefresh = false) {
   if (loading) return;
+  const cacheKey = periodCacheKey(period);
+
+  if (!forceRefresh && periodDataCache.has(cacheKey)) {
+    restorePeriodCache(periodDataCache.get(cacheKey));
+    renderSummary();
+    renderToday();
+    renderPersonal();
+    return;
+  }
+
   loading = true;
   loadError = null;
   renderSummary();
 
   try {
-    const [staff, records] = await Promise.all([
-      fetchStaff(),
-      fetchAllRecordsByPeriod(period.from, period.to)
-    ]);
+    const staff = await fetchStaff();
     staffMap = staff;
-    periodRecords = records;
+    const staffList = Object.values(staffMap).filter(s => s.active !== false);
+    const { from, to } = computeDataFetchRange(staffList, period);
+    const allRecords = await fetchAllRecordsByPeriod(from, to);
+    const split = splitFetchedRecords(allRecords, period, staffList);
+    periodRecords = split.periodRecords;
+    paidLeaveRecordsMap = split.paidLeaveRecordsMap;
+    applyTodayRecordsFromAll(allRecords);
 
-    const staffList = filteredStaffList();
-    const paidResults = await Promise.all(staffList.map(s => loadPaidLeaveForStaff(s)));
-    paidLeaveRecordsMap = {};
-    paidResults.forEach(r => { paidLeaveRecordsMap[r.staffId] = r.records; });
+    periodDataCache.set(cacheKey, snapshotPeriodCache());
 
     loading = false;
     renderSummary();
@@ -1832,6 +1923,12 @@ async function saveEditRecord() {
     const idx = periodRecords.findIndex(r => r.date === saved.date && String(r.staffId) === String(saved.staffId));
     if (idx >= 0) periodRecords[idx] = saved;
     else periodRecords.push(saved);
+    if (saved.date === todayStr()) {
+      const ti = todayRecords.findIndex(r => r.date === saved.date && String(r.staffId) === String(saved.staffId));
+      if (ti >= 0) todayRecords[ti] = saved;
+      else todayRecords.push(saved);
+    }
+    syncPeriodCacheFromMemory();
     closeEditModal();
     renderPersonal();
     renderSummary();
@@ -1870,7 +1967,10 @@ function init() {
 
   $('btnPrevPeriod').addEventListener('click', () => changePeriod(-1));
   $('btnNextPeriod').addEventListener('click', () => changePeriod(1));
-  $('btnReload').addEventListener('click', () => { loadData(); loadTodayData(); });
+  $('btnReload').addEventListener('click', () => {
+    clearPeriodDataCache();
+    loadData(true);
+  });
   $('btnCsv').addEventListener('click', exportCsv);
   $('btnXlsx').addEventListener('click', exportXlsx);
   $('btnPrint').addEventListener('click', doPrint);
@@ -1886,7 +1986,6 @@ function init() {
 
   initEditModal();
   loadData();
-  loadTodayData();
 }
 
 init();
