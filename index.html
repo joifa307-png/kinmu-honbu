@@ -600,12 +600,7 @@ async function confirmMemoRecord(date, staffId, btn) {
   const payload = { ...rec, memo: newMemo };
   if (btn) btn.disabled = true;
   try {
-    const res = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
+    const data = await postToGas(payload);
     if (!data || !data.ok) throw new Error(data?.error || '保存に失敗しました。');
     const saved = data.record || payload;
     updateRecordInCache(saved);
@@ -1034,6 +1029,16 @@ async function fetchAllRecordsByPeriod(from, to) {
   const data = await res.json();
   if (!data.ok) throw new Error(data.error || '勤務記録の取得に失敗しました。');
   return data.records || [];
+}
+
+/** 記録の保存・削除など doPost 向け（upsert と同じ送り方） */
+async function postToGas(body) {
+  const res = await fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body)
+  });
+  return res.json();
 }
 
 const PAID_LEAVE_DEFAULT_FROM = '2020-01-01';
@@ -1956,12 +1961,7 @@ async function saveEditRecord() {
   $('editDelete').disabled = true;
   $('editSave').textContent = '保存中…';
   try {
-    const res = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(record)
-    });
-    const data = await res.json();
+    const data = await postToGas(record);
     if (!data || !data.ok) throw new Error(data?.error || '保存に失敗しました。');
     const saved = data.record || record;
     const idx = periodRecords.findIndex(r => r.date === saved.date && String(r.staffId) === String(saved.staffId));
@@ -2006,13 +2006,12 @@ async function deleteEditRecord() {
   $('editErr').textContent = '';
 
   try {
-    const payload = { type: 'recordDelete', date: editDate, staffId: editStaffId };
-    const res = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
+    const payload = {
+      type: 'recordDelete',
+      date: editOrigRecord.date || editDate,
+      staffId: editOrigRecord.staffId != null ? editOrigRecord.staffId : editStaffId
+    };
+    const data = await postToGas(payload);
 
     if (!data || !data.ok) {
       $('editErr').textContent = formatDeleteError(data?.error);
