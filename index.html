@@ -14,7 +14,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku
 /* ヘッダー */
 .header{background:#FCFBFA;border-radius:14px;padding:14px 18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(55,50,47,.06)}
 .header-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px}
-.app-title{font-size:1.15rem;font-weight:700;color:#0f6e56}
+.header-title-wrap{display:flex;flex-direction:column;gap:2px}
+.app-title{font-size:1.15rem;font-weight:700;color:#0f6e56;line-height:1.2}
+.app-version{font-size:.65rem;color:#b5aea8;font-weight:400;line-height:1}
 .header-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .btn{border:2px solid #d8d2ce;border-radius:10px;padding:8px 14px;font-size:.85rem;font-weight:600;background:#fff;color:#37322f;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
 a.btn-link{border:2px solid #d8d2ce;border-radius:10px;padding:8px 14px;font-size:.85rem;font-weight:600;background:#fff;color:#185fa5;text-decoration:none;text-align:center;font-family:inherit;transition:all .15s;white-space:nowrap;display:inline-block}
@@ -128,6 +130,10 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 .edit-section.show{display:block}
 .edit-err{color:#a32d2d;font-size:.85rem;margin:8px 0;display:none}
 .edit-err.show{display:block}
+.edit-delete-wrap{margin-top:12px;padding-top:14px;border-top:1px solid #e8e4e1}
+.btn-delete-rec{width:100%;background:#fff;border:2px solid #c4423a;color:#a32d2d;font-weight:600}
+.btn-delete-rec:hover:not(:disabled){background:#fdf0ef;border-color:#a32d2d;color:#8b2520}
+.btn-delete-rec:disabled{opacity:.55;cursor:not-allowed}
 .edit-actions{display:flex;gap:10px;margin-top:16px}
 .edit-actions .btn{flex:1}
 .edit-hint{font-size:.78rem;color:#6b6562;margin-top:4px}
@@ -157,7 +163,10 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 <div class="app">
   <header class="header no-print">
     <div class="header-top">
-      <div class="app-title">出勤簿（本部）</div>
+      <div class="header-title-wrap">
+        <div class="app-title">出勤簿（本部）</div>
+        <span class="app-version" id="appVersion"></span>
+      </div>
       <div class="header-actions">
         <button type="button" class="btn" id="btnCsv">CSV出力</button>
         <button type="button" class="btn" id="btnXlsx">Excel出力</button>
@@ -351,6 +360,9 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
       <textarea id="editMemo" maxlength="500"></textarea>
     </div>
     <p class="edit-err" id="editErr"></p>
+    <div class="edit-delete-wrap" id="editDeleteWrap">
+      <button type="button" class="btn btn-delete-rec" id="editDelete">この記録を削除（公休に戻す）</button>
+    </div>
     <div class="edit-actions">
       <button type="button" class="btn" id="editCancel">キャンセル</button>
       <button type="button" class="btn btn-primary" id="editSave">保存</button>
@@ -360,6 +372,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
+const APP_VERSION = '1.2.0';
+const APP_VERSION_NOTES = '1.2.0 — 特記事項アラート／一括読込・月度キャッシュ／記録削除（公休に戻す）';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
@@ -550,6 +564,31 @@ function updateRecordInCache(saved) {
     if (idx >= 0) arr[idx] = saved;
   });
   syncPeriodCacheFromMemory();
+}
+
+function removeRecordFromCache(date, staffId) {
+  const match = r => r.date === date && String(r.staffId) === String(staffId);
+  [periodRecords, todayRecords].forEach(arr => {
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (match(arr[i])) arr.splice(i, 1);
+    }
+  });
+  Object.keys(paidLeaveRecordsMap).forEach(sid => {
+    if (String(sid) === String(staffId)) {
+      paidLeaveRecordsMap[sid] = paidLeaveRecordsMap[sid].filter(r => !match(r));
+    }
+  });
+  syncPeriodCacheFromMemory();
+}
+
+function formatDeleteError(msg) {
+  const m = String(msg || '').trim();
+  if (!m) return '削除できませんでした。';
+  if (/承認済|approved|有給.*削除/i.test(m)) return m;
+  if (m.includes('paid_leave') || m.includes('approvalStatus')) {
+    return '承認済みの有給は削除できません。';
+  }
+  return m;
 }
 
 async function confirmMemoRecord(date, staffId, btn) {
@@ -1828,6 +1867,10 @@ function openEditModal(dateStr) {
   $('editMemo').value = rec?.memo || '';
 
   updateEditFormVisibility();
+  const hasRec = !!editOrigRecord;
+  $('editDeleteWrap').style.display = hasRec ? 'block' : 'none';
+  $('editDelete').disabled = false;
+  $('editDelete').textContent = 'この記録を削除（公休に戻す）';
   $('editOverlay').classList.add('open');
   $('editOverlay').setAttribute('aria-hidden', 'false');
 }
@@ -1910,6 +1953,7 @@ async function saveEditRecord() {
   const record = buildEditRecord();
   editSaving = true;
   $('editSave').disabled = true;
+  $('editDelete').disabled = true;
   $('editSave').textContent = '保存中…';
   try {
     const res = await fetch(GAS_URL, {
@@ -1940,6 +1984,66 @@ async function saveEditRecord() {
     editSaving = false;
     $('editSave').disabled = false;
     $('editSave').textContent = '保存';
+    if (editOrigRecord) $('editDelete').disabled = false;
+  }
+}
+
+async function deleteEditRecord() {
+  if (editSaving) return;
+  if (!editOrigRecord) {
+    $('editErr').textContent = '削除する記録がありません。';
+    $('editErr').classList.add('show');
+    return;
+  }
+  const msg = 'この記録を削除すると元に戻せません。\nこの日を公休（空白）に戻します。よろしいですか？';
+  if (!confirm(msg)) return;
+
+  editSaving = true;
+  $('editSave').disabled = true;
+  $('editDelete').disabled = true;
+  $('editDelete').textContent = '削除中…';
+  $('editErr').classList.remove('show');
+  $('editErr').textContent = '';
+
+  try {
+    const payload = { type: 'recordDelete', date: editDate, staffId: editStaffId };
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    if (!data || !data.ok) {
+      $('editErr').textContent = formatDeleteError(data?.error);
+      $('editErr').classList.add('show');
+      return;
+    }
+
+    const deleted = data.result?.deleted;
+    if (deleted) {
+      removeRecordFromCache(editDate, editStaffId);
+      closeEditModal();
+      renderPersonal();
+      renderSummary();
+      renderToday();
+      return;
+    }
+
+    removeRecordFromCache(editDate, editStaffId);
+    closeEditModal();
+    alert('この記録はすでに存在しません。表示を更新しました。');
+    renderPersonal();
+    renderSummary();
+    renderToday();
+  } catch (e) {
+    $('editErr').textContent = String(e.message || e);
+    $('editErr').classList.add('show');
+  } finally {
+    editSaving = false;
+    $('editSave').disabled = false;
+    $('editDelete').disabled = false;
+    $('editDelete').textContent = 'この記録を削除（公休に戻す）';
   }
 }
 
@@ -1959,10 +2063,16 @@ function initEditModal() {
   $('editAbsNote').addEventListener('input', updateEditFormVisibility);
   $('editCancel').addEventListener('click', closeEditModal);
   $('editSave').addEventListener('click', saveEditRecord);
+  $('editDelete').addEventListener('click', deleteEditRecord);
 }
 
 /* ── 初期化 ── */
 function init() {
+  const verEl = $('appVersion');
+  if (verEl) {
+    verEl.textContent = 'v' + APP_VERSION;
+    verEl.title = APP_VERSION_NOTES;
+  }
   renderHeader();
 
   $('btnPrevPeriod').addEventListener('click', () => changePeriod(-1));
