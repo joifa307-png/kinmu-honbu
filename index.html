@@ -322,6 +322,9 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
       </div>
       <div class="edit-calc" id="editCalc">実働 —　残業 —</div>
       <div class="edit-field">
+        <label class="edit-check"><input type="checkbox" id="editHolidayWorkFlag"> 休日出勤（本来の休みに出た日）</label>
+      </div>
+      <div class="edit-field">
         <label class="edit-check"><input type="checkbox" id="editLateFlag"> 遅刻・早退</label>
       </div>
       <div class="edit-field" id="editLateNoteWrap" style="display:none">
@@ -1864,6 +1867,7 @@ function openEditModal(dateStr) {
   $('editBreak').value = String(rec?.breakMin != null && rec.breakMin !== '' ? rec.breakMin : (shiftMaster[defaultShift]?.breakMin ?? 60));
 
   $('editLateFlag').checked = !!(rec?.lateFlag);
+  $('editHolidayWorkFlag').checked = !!(rec?.holidayWorkFlag);
   $('editLateNote').value = rec?.lateNote || '';
   populateEditOtReasonSelect(rec?.overtimeReason || '');
   $('editOtNote').value = rec?.overtimeNote || '';
@@ -1932,7 +1936,7 @@ function buildEditRecord() {
     overtimeMin: status === 'work' ? ot : 0,
     lateFlag: status === 'work' && lateFlag,
     lateNote: status === 'work' && lateFlag ? $('editLateNote').value.trim() : '',
-    holidayWorkFlag: status === 'work' ? !!orig.holidayWorkFlag : false,
+    holidayWorkFlag: status === 'work' && $('editHolidayWorkFlag').checked,
     absenceReason: status === 'absence' ? $('editAbsReason').value : null,
     absenceNote: status === 'absence' ? $('editAbsNote').value.trim() : '',
     overtimeReason: showOt ? otReason : null,
