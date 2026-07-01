@@ -59,6 +59,12 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 .note-mark{color:#854f0b;font-weight:700;margin-right:4px}
 .today-count{font-size:.9rem;font-weight:600;color:#0f6e56;margin-bottom:12px}
 .today-count span{font-size:1.05rem}
+.today-date-nav{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #f0ece9}
+.today-date-nav button{background:#fff;border:2px solid #d8d2ce;border-radius:10px;padding:8px 12px;font-size:.82rem;font-weight:600;color:#37322f;cursor:pointer;font-family:inherit;white-space:nowrap}
+.today-date-nav button:hover:not(:disabled){border-color:#0f6e56;color:#0f6e56}
+.today-date-nav button:disabled{opacity:.4;cursor:default}
+.today-date-select{border:2px solid #d8d2ce;border-radius:10px;padding:8px 12px;font-size:.88rem;font-weight:600;font-family:inherit;background:#fff;color:#37322f;min-width:9.5em}
+.today-goto-btn{font-size:.82rem}
 .dup-alert{background:#fcebeb;border:2px solid #e8b4b4;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:.85rem;color:#a32d2d}
 .dup-alert-title{font-weight:700;margin-bottom:6px}
 .dup-alert ul{margin:0;padding-left:1.2em}
@@ -195,6 +201,12 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
   <div class="tab-panel" data-tab="today" id="panelToday">
     <div class="card">
+      <div class="today-date-nav no-print" id="todayDateNav">
+        <button type="button" id="btnTodayPrev" aria-label="前日">◀ 前日</button>
+        <select id="todayDateSelect" class="today-date-select" aria-label="表示日"></select>
+        <button type="button" id="btnTodayNext" aria-label="翌日">翌日 ▶</button>
+        <button type="button" class="today-goto-btn" id="btnTodayGoto">今日に戻る</button>
+      </div>
       <div class="today-count" id="todayCount" style="display:none"></div>
       <div id="todayDupAlert" style="display:none"></div>
       <div id="todayMemoAlert" style="display:none"></div>
@@ -375,8 +387,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.0';
-const APP_VERSION_NOTES = '1.2.0 — 特記事項アラート／一括読込・月度キャッシュ／記録削除（公休に戻す）';
+const APP_VERSION = '1.2.1';
+const APP_VERSION_NOTES = '1.2.1 — 休日出勤（訂正フォーム）／当日タブ日付ナビ／削除POST修正';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
@@ -1098,9 +1110,60 @@ function splitFetchedRecords(allRecords, p, staffList) {
 function applyTodayRecordsFromAll(allRecords) {
   const today = todayStr();
   todayRecords = allRecords.filter(r => r.date === today);
-  todayDataLoaded = true;
-  todayLoading = false;
-  todayLoadError = null;
+  if (!todayViewDate || !isDateInPeriod(todayViewDate, period)) {
+    todayViewDate = defaultTodayViewDate(period);
+  }
+}
+
+function isDateInPeriod(dateStr, p) {
+  return dateStr >= p.from && dateStr <= p.to;
+}
+
+function defaultTodayViewDate(p) {
+  const today = todayStr();
+  return isDateInPeriod(today, p) ? today : p.from;
+}
+
+function clampToPeriod(dateStr, p) {
+  if (dateStr < p.from) return p.from;
+  if (dateStr > p.to) return p.to;
+  return dateStr;
+}
+
+function resetTodayViewDate() {
+  todayViewDate = defaultTodayViewDate(period);
+}
+
+function recordsForViewDate(dateStr) {
+  return periodRecords.filter(r => r.date === dateStr);
+}
+
+function setTodayViewDate(dateStr) {
+  todayViewDate = clampToPeriod(dateStr, period);
+  renderToday();
+}
+
+function shiftTodayViewDate(delta) {
+  setTodayViewDate(addDays(todayViewDate, delta));
+}
+
+function populateTodayDateSelect() {
+  const sel = $('todayDateSelect');
+  const dates = periodDates(period.from, period.to);
+  sel.innerHTML = dates.map(d =>
+    `<option value="${d}">${esc(fmtDateWithDow(d))}</option>`
+  ).join('');
+  sel.value = todayViewDate;
+}
+
+function renderTodayDateNav() {
+  populateTodayDateSelect();
+  $('btnTodayPrev').disabled = todayViewDate <= period.from;
+  $('btnTodayNext').disabled = todayViewDate >= period.to;
+  const today = todayStr();
+  const canGotoToday = isDateInPeriod(today, period);
+  $('btnTodayGoto').disabled = !canGotoToday || todayViewDate === today;
+  $('btnTodayGoto').style.visibility = canGotoToday ? 'visible' : 'hidden';
 }
 
 function snapshotPeriodCache() {
@@ -1119,9 +1182,7 @@ function restorePeriodCache(cached) {
   periodRecords = cached.periodRecords;
   paidLeaveRecordsMap = cached.paidLeaveRecordsMap;
   todayRecords = cached.todayRecords;
-  todayDataLoaded = true;
-  todayLoading = false;
-  todayLoadError = null;
+  resetTodayViewDate();
 }
 
 function syncPeriodCacheFromMemory() {
@@ -1132,7 +1193,6 @@ function syncPeriodCacheFromMemory() {
 
 function clearPeriodDataCache() {
   periodDataCache.clear();
-  todayDataLoaded = false;
 }
 
 /* ── 状態 ── */
@@ -1147,9 +1207,7 @@ let expandedStaffId = null;
 let loading = false;
 let loadError = null;
 let todayRecords = [];
-let todayLoading = false;
-let todayLoadError = null;
-let todayDataLoaded = false;
+let todayViewDate = null;
 
 const $ = id => document.getElementById(id);
 
@@ -1183,7 +1241,7 @@ function fmtOtDisplay(min) {
 }
 
 function buildTodayRows() {
-  return todayRecords
+  return recordsForViewDate(todayViewDate)
     .map(rec => ({ rec, staff: staffMap[rec.staffId] }))
     .filter(({ staff }) => facilityFilter === 'all' || (staff && staff.facilityId === facilityFilter))
     .sort((a, b) => {
@@ -1254,15 +1312,16 @@ function renderTodayError(msg) {
   $('todayStatus').className = 'status-msg error';
   $('todayStatus').innerHTML = `${msg}<br><button type="button" class="retry-btn" id="todayRetryBtn">再読込</button>`;
   $('todayTableWrap').style.display = 'none';
-  $('todayRetryBtn').addEventListener('click', () => loadTodayData(true));
+  $('todayRetryBtn').addEventListener('click', () => loadData(true));
 }
 
 function renderToday() {
-  if (todayLoadError) {
-    renderTodayError(todayLoadError);
+  if (loadError) {
+    renderTodayError(loadError);
     return;
   }
-  if (todayLoading) {
+  if (loading) {
+    $('todayDateNav').style.display = 'none';
     $('todayCount').style.display = 'none';
     $('todayDupAlert').style.display = 'none';
     $('todayDupAlert').innerHTML = '';
@@ -1275,24 +1334,30 @@ function renderToday() {
     return;
   }
 
+  if (!todayViewDate) resetTodayViewDate();
+  $('todayDateNav').style.display = 'flex';
+  renderTodayDateNav();
+
+  const viewRecords = recordsForViewDate(todayViewDate);
   const rows = buildTodayRows();
-  const { dupRecordKeys, alerts } = detectShiftDuplicates(todayRecords);
+  const { dupRecordKeys, alerts } = detectShiftDuplicates(viewRecords);
+  const dateLabel = fmtDateWithDow(todayViewDate);
 
   if (!rows.length) {
     $('todayCount').style.display = 'none';
     renderDupAlert('todayDupAlert', alerts);
-    renderMemoAlert('todayMemoAlert', todayRecords);
+    renderMemoAlert('todayMemoAlert', viewRecords);
     $('todayStatus').style.display = 'block';
     $('todayStatus').className = 'status-msg';
-    $('todayStatus').textContent = '本日の登録はまだありません';
+    $('todayStatus').textContent = `${dateLabel}の登録はまだありません`;
     $('todayTableWrap').style.display = 'none';
     return;
   }
 
   $('todayCount').style.display = 'block';
-  $('todayCount').innerHTML = `本日 <span>${rows.length}</span>名登録`;
+  $('todayCount').innerHTML = `${esc(dateLabel)} <span>${rows.length}</span>名登録`;
   renderDupAlert('todayDupAlert', alerts);
-  renderMemoAlert('todayMemoAlert', todayRecords);
+  renderMemoAlert('todayMemoAlert', viewRecords);
   $('todayStatus').style.display = 'none';
   $('todayTableWrap').style.display = 'block';
 
@@ -1687,34 +1752,6 @@ function addDays(dateStr, delta) {
   return ymd(dt);
 }
 
-async function loadTodayData(forceRefresh = false) {
-  if (todayLoading) return;
-  if (!forceRefresh && todayDataLoaded) {
-    renderToday();
-    return;
-  }
-  todayLoading = true;
-  todayLoadError = null;
-  todayDataLoaded = false;
-  renderToday();
-
-  try {
-    const today = todayStr();
-    if (!Object.keys(staffMap).length) {
-      staffMap = await fetchStaff();
-    }
-    todayRecords = await fetchAllRecordsByPeriod(today, today);
-    todayDataLoaded = true;
-    todayLoading = false;
-    renderToday();
-  } catch (e) {
-    todayLoading = false;
-    todayDataLoaded = false;
-    todayLoadError = e.message || 'データの取得に失敗しました。';
-    renderToday();
-  }
-}
-
 async function loadData(forceRefresh = false) {
   if (loading) return;
   const cacheKey = periodCacheKey(period);
@@ -1729,6 +1766,7 @@ async function loadData(forceRefresh = false) {
 
   loading = true;
   loadError = null;
+  resetTodayViewDate();
   renderSummary();
 
   try {
@@ -1760,6 +1798,7 @@ function changePeriod(delta) {
   period = delta < 0 ? prevPeriod(period) : nextPeriod(period);
   expandedStaffId = null;
   selectedPersonalStaffId = null;
+  resetTodayViewDate();
   renderHeader();
   loadData();
 }
@@ -2098,7 +2137,18 @@ function init() {
   });
 
   initEditModal();
+  resetTodayViewDate();
+  initTodayDateNav();
   loadData();
+}
+
+function initTodayDateNav() {
+  $('btnTodayPrev').addEventListener('click', () => shiftTodayViewDate(-1));
+  $('btnTodayNext').addEventListener('click', () => shiftTodayViewDate(1));
+  $('btnTodayGoto').addEventListener('click', () => setTodayViewDate(todayStr()));
+  $('todayDateSelect').addEventListener('change', () => {
+    setTodayViewDate($('todayDateSelect').value);
+  });
 }
 
 init();
