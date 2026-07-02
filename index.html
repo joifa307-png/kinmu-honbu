@@ -387,8 +387,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.1';
-const APP_VERSION_NOTES = '1.2.1 — 休日出勤（訂正フォーム）／当日タブ日付ナビ／削除POST修正';
+const APP_VERSION = '1.2.2';
+const APP_VERSION_NOTES = '1.2.2 — 当日タブの特記事項欄に遅早・残業理由など備考を表示';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
@@ -1370,8 +1370,10 @@ function renderToday() {
     const shift = rec.status === 'work' ? esc(shiftLabel(rec.shiftKey)) : '—';
     const work = rec.status === 'work' ? H(rec.workMin) : '—';
     const ot = rec.status === 'work' ? fmtOtDisplay(rec.overtimeMin) : '—';
-    const memo = rec.memo && String(rec.memo).trim() ? esc(rec.memo) : '';
-    const noteMark = memo ? '<span class="note-mark" title="特記事項あり">●</span>' : '';
+    const note = buildRecordNote(rec);
+    const noteText = note === '—' ? '' : esc(note);
+    const noteMark = rec.memo && String(rec.memo).trim()
+      ? '<span class="note-mark" title="特記事項あり">●</span>' : '';
 
     const tr = document.createElement('tr');
     if (isDupRecord(rec, dupRecordKeys)) tr.className = 'dup-row';
@@ -1382,7 +1384,7 @@ function renderToday() {
       <td>${shift}</td>
       <td class="num">${work}</td>
       <td class="num">${ot}</td>
-      <td>${memo}</td>
+      <td>${noteText}</td>
     `;
     tbody.appendChild(tr);
   });
