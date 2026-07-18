@@ -113,9 +113,13 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 .personal-totals .tot-val{font-size:1rem;font-weight:700;color:#0f6e56}
 .personal-totals .tot-lbl{font-size:.72rem;color:#6b6562;margin-top:2px}
 .personal-print-area{display:none}
-.personal-page{margin-bottom:24px}
+.personal-page{margin-bottom:24px;padding:12px 10px;border-top:2px solid #b5aea8}
+.personal-page:first-child{border-top:none}
+.personal-page:nth-child(even){background:#f3f1ef}
 .personal-page-title{font-size:1rem;font-weight:700;margin-bottom:4px}
 .personal-page-sub{font-size:.85rem;color:#6b6562;margin-bottom:10px}
+.personal-print-area .personal-detail-table tbody tr:nth-child(even){background:#ebe8e5}
+.personal-print-area .personal-detail-table tbody tr:nth-child(odd){background:transparent}
 .btn-edit-rec{padding:4px 10px;font-size:.75rem}
 
 /* 訂正モーダル */
@@ -156,8 +160,26 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
   body:not(.print-personal) .print-title{display:block!important;font-size:14pt;font-weight:700;margin-bottom:12px;text-align:center}
   body.print-personal .personal-print-area{display:block!important}
   body.print-personal .print-title{display:none!important}
-  .personal-page{page-break-after:always}
-  .personal-page:last-child{page-break-after:auto}
+  body.print-personal .personal-page{
+    page-break-after:always;
+    border-top:2.5pt solid #8a847f;
+    padding:8px 6px 10px;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+  body.print-personal .personal-page:first-child{border-top:none}
+  body.print-personal .personal-page:last-child{page-break-after:auto}
+  body.print-personal .personal-page:nth-child(even){background:#f0eeec}
+  body.print-personal .personal-detail-table tbody tr:nth-child(even) td{
+    background:#e8e5e2;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+  body.print-personal .personal-page-title{
+    padding-bottom:4px;
+    border-bottom:1px solid #c4bfbb;
+    margin-bottom:6px;
+  }
   .sum-row{cursor:default}
   .detail-row{display:none!important}
   table{font-size:9pt}
@@ -387,8 +409,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.2';
-const APP_VERSION_NOTES = '1.2.2 — 当日タブの特記事項欄に遅早・残業理由など備考を表示';
+const APP_VERSION = '1.2.3';
+const APP_VERSION_NOTES = '1.2.3 — 個人明細印刷：職員区切り線・薄いグレーストライプ';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
