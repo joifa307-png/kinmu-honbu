@@ -182,6 +182,15 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
   }
   .sum-row{cursor:default}
   .detail-row{display:none!important}
+  body:not(.print-personal) #summaryTable tbody tr.sum-row.stripe td{
+    background:#e8e5e2;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+  body:not(.print-personal) #summaryTable{
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
   table{font-size:9pt}
   thead th,tbody td{padding:4px 6px}
 }
@@ -409,8 +418,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.3';
-const APP_VERSION_NOTES = '1.2.3 — 個人明細印刷：職員区切り線・薄いグレーストライプ';
+const APP_VERSION = '1.2.4';
+const APP_VERSION_NOTES = '1.2.4 — 月度集計印刷：薄いグレーストライプ';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
@@ -1460,9 +1469,11 @@ function renderSummary() {
   const tbody = $('summaryBody');
   tbody.innerHTML = '';
 
-  rows.forEach(({ staff, recs, agg, paidRemain }) => {
+  rows.forEach(({ staff, recs, agg, paidRemain }, idx) => {
     const tr = document.createElement('tr');
-    tr.className = 'sum-row' + (expandedStaffId === staff.staffId ? ' expanded' : '');
+    tr.className = 'sum-row'
+      + (idx % 2 === 1 ? ' stripe' : '')
+      + (expandedStaffId === staff.staffId ? ' expanded' : '');
     tr.dataset.staffId = staff.staffId;
 
     const paidDisplay = paidRemain === null ? '—' : String(paidRemain);
