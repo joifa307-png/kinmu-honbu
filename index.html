@@ -418,8 +418,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.4';
-const APP_VERSION_NOTES = '1.2.4 — 月度集計印刷：薄いグレーストライプ';
+const APP_VERSION = '1.2.5';
+const APP_VERSION_NOTES = '1.2.5 — 有給残計算修正（未来日・staffId・承認状態）';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
@@ -608,8 +608,28 @@ function updateRecordInCache(saved) {
   [periodRecords, todayRecords].forEach(arr => {
     const idx = arr.findIndex(r => r.date === saved.date && String(r.staffId) === String(saved.staffId));
     if (idx >= 0) arr[idx] = saved;
+    else if (arr === periodRecords && saved.date >= period.from && saved.date <= period.to) arr.push(saved);
   });
+  syncPaidLeaveRecordInCache(saved);
   syncPeriodCacheFromMemory();
+}
+
+function syncPaidLeaveRecordInCache(saved) {
+  const sid = normStaffId(saved.staffId);
+  const staff = Object.values(staffMap).find(s => normStaffId(s.staffId) === sid);
+  if (!staff || !staffHasPaidLeaveBalance(staff)) return;
+  const from = paidLeaveFromForStaff(staff);
+  const key = Object.keys(paidLeaveRecordsMap).find(k => normStaffId(k) === sid) || staff.staffId;
+  if (!paidLeaveRecordsMap[key]) paidLeaveRecordsMap[key] = [];
+  const list = paidLeaveRecordsMap[key];
+  const idx = list.findIndex(r => r.date === saved.date && normStaffId(r.staffId) === sid);
+  const inRange = saved.date >= from;
+  if (inRange && saved.status === 'paid_leave') {
+    if (idx >= 0) list[idx] = saved;
+    else list.push(saved);
+  } else if (idx >= 0) {
+    list.splice(idx, 1);
+  }
 }
 
 function removeRecordFromCache(date, staffId) {
@@ -1042,9 +1062,21 @@ function aggregateRecords(records) {
   return { workDays, holDays, paidDays, absDays, workMin, otMin, lateCount, hasMemo };
 }
 
+function normStaffId(id) {
+  return String(id == null ? '' : id).trim();
+}
+
+/** 消化として数える有給か（申請中・取り下げは未消化） */
+function isPaidLeaveConsumed(rec) {
+  if (!rec || rec.status !== 'paid_leave') return false;
+  const ap = String(rec.approvalStatus || '').trim();
+  if (ap === 'pending' || ap === 'withdrawn') return false;
+  return true;
+}
+
 function countPaidLeaveConsumed(records, asOf) {
   return records.filter(r => {
-    if (r.status !== 'paid_leave') return false;
+    if (!isPaidLeaveConsumed(r)) return false;
     if (!asOf) return true;
     return r.date > asOf;
   }).length;
@@ -1112,8 +1144,9 @@ function paidLeaveFromForStaff(staff) {
 
 function computeDataFetchRange(staffList, p) {
   const today = todayStr();
+  /* 有給残は未来の承認済有給も引くため、今日＋1年分まで取得範囲に含める */
   let from = p.from;
-  let to = maxDateStr(p.to, today);
+  let to = maxDateStr(p.to, addDays(today, 365));
   staffList.forEach(staff => {
     if (!staffHasPaidLeaveBalance(staff)) return;
     from = minDateStr(from, paidLeaveFromForStaff(staff));
@@ -1122,17 +1155,17 @@ function computeDataFetchRange(staffList, p) {
 }
 
 function splitFetchedRecords(allRecords, p, staffList) {
-  const today = todayStr();
   const records = allRecords.filter(r => r.date >= p.from && r.date <= p.to);
   const paidMap = {};
   staffList.forEach(staff => {
+    const sid = normStaffId(staff.staffId);
     if (!staffHasPaidLeaveBalance(staff)) {
       paidMap[staff.staffId] = [];
       return;
     }
     const from = paidLeaveFromForStaff(staff);
     paidMap[staff.staffId] = allRecords.filter(r =>
-      r.staffId === staff.staffId && r.date >= from && r.date <= today
+      normStaffId(r.staffId) === sid && r.date >= from
     );
   });
   return { periodRecords: records, paidLeaveRecordsMap: paidMap };
@@ -1263,7 +1296,8 @@ function filteredStaffList() {
 }
 
 function recordsForStaff(staffId) {
-  return periodRecords.filter(r => r.staffId === staffId);
+  const sid = normStaffId(staffId);
+  return periodRecords.filter(r => normStaffId(r.staffId) === sid);
 }
 
 function fmtOtDisplay(min) {
@@ -2042,15 +2076,7 @@ async function saveEditRecord() {
     const data = await postToGas(record);
     if (!data || !data.ok) throw new Error(data?.error || '保存に失敗しました。');
     const saved = data.record || record;
-    const idx = periodRecords.findIndex(r => r.date === saved.date && String(r.staffId) === String(saved.staffId));
-    if (idx >= 0) periodRecords[idx] = saved;
-    else periodRecords.push(saved);
-    if (saved.date === todayStr()) {
-      const ti = todayRecords.findIndex(r => r.date === saved.date && String(r.staffId) === String(saved.staffId));
-      if (ti >= 0) todayRecords[ti] = saved;
-      else todayRecords.push(saved);
-    }
-    syncPeriodCacheFromMemory();
+    updateRecordInCache(saved);
     closeEditModal();
     renderPersonal();
     renderSummary();
