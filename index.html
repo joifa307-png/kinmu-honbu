@@ -83,6 +83,9 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 .btn-memo-confirm{flex:0 0 auto;padding:6px 12px;font-size:.78rem;border:2px solid #b8d4f0;background:#fff;color:#185fa5;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;white-space:nowrap}
 .btn-memo-confirm:hover{border-color:#185fa5;background:#f5faff}
 .btn-memo-confirm:disabled{opacity:.5;cursor:default}
+.memo-card-actions{display:flex;flex-direction:column;gap:6px;flex:0 0 auto;align-items:stretch}
+.btn-memo-personal{flex:0 0 auto;padding:6px 12px;font-size:.78rem;border:2px solid #b8d4f0;background:#fff;color:#185fa5;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:600;white-space:nowrap}
+.btn-memo-personal:hover{border-color:#185fa5;background:#f5faff}
 
 /* 行展開明細 */
 .detail-row td{padding:0;border-bottom:1px solid #e8e4e1;background:#faf9f8}
@@ -418,8 +421,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.5';
-const APP_VERSION_NOTES = '1.2.5 — 有給残計算修正（未来日・staffId・承認状態）';
+const APP_VERSION = '1.2.6';
+const APP_VERSION_NOTES = '1.2.6 — 特記事項から個人詳細タブへジャンプ';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
@@ -581,7 +584,10 @@ function renderMemoAlert(elId, records) {
         <div class="memo-card-meta">${fmtDateWithDow(rec.date)}　${esc(staffName(rec.staffId))}</div>
         <div class="memo-card-text">${esc(memo)}</div>
       </div>
-      <button type="button" class="btn-memo-confirm" data-date="${esc(rec.date)}" data-staff-id="${esc(String(rec.staffId))}">確認済み</button>
+      <div class="memo-card-actions">
+        <button type="button" class="btn-memo-confirm" data-date="${esc(rec.date)}" data-staff-id="${esc(String(rec.staffId))}">確認済み</button>
+        <button type="button" class="btn-memo-personal" data-staff-id="${esc(String(rec.staffId))}">個人詳細</button>
+      </div>
     </div>
   `).join('');
   el.style.display = 'block';
@@ -589,6 +595,20 @@ function renderMemoAlert(elId, records) {
   el.querySelectorAll('.btn-memo-confirm').forEach(btn => {
     btn.addEventListener('click', () => confirmMemoRecord(btn.getAttribute('data-date'), btn.getAttribute('data-staff-id'), btn));
   });
+  el.querySelectorAll('.btn-memo-personal').forEach(btn => {
+    btn.addEventListener('click', () => openPersonalDetail(btn.getAttribute('data-staff-id')));
+  });
+}
+
+function openPersonalDetail(staffId) {
+  const sid = normStaffId(staffId);
+  const staff = Object.values(staffMap).find(s => normStaffId(s.staffId) === sid);
+  if (!staff) {
+    alert('対象のスタッフが見つかりません。');
+    return;
+  }
+  selectedPersonalStaffId = staff.staffId;
+  switchTab('personal');
 }
 
 function applyMemoConfirmed(memo) {
@@ -1582,8 +1602,10 @@ function renderPersonalStaffSelect() {
     opt.textContent = s.name || s.staffId;
     select.appendChild(opt);
   });
-  if (prev && staffList.some(s => s.staffId === prev)) {
-    select.value = prev;
+  if (prev && staffList.some(s => normStaffId(s.staffId) === normStaffId(prev))) {
+    const match = staffList.find(s => normStaffId(s.staffId) === normStaffId(prev));
+    selectedPersonalStaffId = match.staffId;
+    select.value = match.staffId;
   } else if (staffList.length) {
     selectedPersonalStaffId = staffList[0].staffId;
     select.value = selectedPersonalStaffId;
@@ -1611,7 +1633,9 @@ function renderPersonal() {
 
   renderPersonalStaffSelect();
 
-  const staff = selectedPersonalStaffId ? staffMap[selectedPersonalStaffId] : null;
+  const staff = selectedPersonalStaffId
+    ? (staffById(selectedPersonalStaffId) || Object.values(staffMap).find(s => normStaffId(s.staffId) === normStaffId(selectedPersonalStaffId)))
+    : null;
   if (!staff) {
     $('personalStatus').style.display = 'block';
     $('personalStatus').className = 'status-msg';
