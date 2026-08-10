@@ -154,6 +154,7 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 /* 印刷用 */
 .print-title{display:none}
 @media print{
+  @page{size:A4 portrait;margin:8mm}
   body{background:#fff}
   .app{max-width:none;padding:0}
   .header .header-actions,.tabs,.btn,.facility-filter,.period-nav button,.no-print{display:none!important}
@@ -165,24 +166,60 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
   body.print-personal .print-title{display:none!important}
   body.print-personal .personal-page{
     page-break-after:always;
-    border-top:2.5pt solid #8a847f;
-    padding:8px 6px 10px;
+    page-break-inside:avoid;
+    break-inside:avoid;
+    border-top:1.5pt solid #8a847f;
+    padding:2px 2px 4px;
+    margin:0;
     -webkit-print-color-adjust:exact;
     print-color-adjust:exact;
   }
   body.print-personal .personal-page:first-child{border-top:none}
   body.print-personal .personal-page:last-child{page-break-after:auto}
   body.print-personal .personal-page:nth-child(even){background:#f0eeec}
+  body.print-personal .personal-page-title{
+    font-size:9pt;
+    line-height:1.2;
+    padding-bottom:2px;
+    border-bottom:1px solid #c4bfbb;
+    margin:0 0 2px;
+  }
+  body.print-personal .personal-page-sub{
+    font-size:7.5pt;
+    line-height:1.2;
+    margin:0 0 3px;
+  }
+  body.print-personal .personal-detail-table{
+    font-size:7pt;
+    line-height:1.15;
+    width:100%;
+  }
+  body.print-personal .personal-detail-table thead th{
+    padding:1px 3px;
+    font-size:7pt;
+    border-bottom:1px solid #c4bfbb;
+  }
+  body.print-personal .personal-detail-table tbody td{
+    padding:1px 3px;
+    vertical-align:top;
+    border-bottom:0.5pt solid #ddd;
+  }
   body.print-personal .personal-detail-table tbody tr:nth-child(even) td{
     background:#e8e5e2;
     -webkit-print-color-adjust:exact;
     print-color-adjust:exact;
   }
-  body.print-personal .personal-page-title{
-    padding-bottom:4px;
-    border-bottom:1px solid #c4bfbb;
-    margin-bottom:6px;
+  body.print-personal .personal-totals{
+    display:flex;
+    flex-wrap:nowrap;
+    gap:4px;
+    margin-top:4px;
+    padding-top:3px;
+    border-top:1pt solid #c4bfbb;
   }
+  body.print-personal .personal-totals .tot-item{flex:1;min-width:0;text-align:center}
+  body.print-personal .personal-totals .tot-val{font-size:8pt;line-height:1.15}
+  body.print-personal .personal-totals .tot-lbl{font-size:6.5pt;margin-top:0;line-height:1.1}
   .sum-row{cursor:default}
   .detail-row{display:none!important}
   body:not(.print-personal) #summaryTable tbody tr.sum-row.stripe td{
@@ -421,8 +458,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.7';
-const APP_VERSION_NOTES = '1.2.7 — 特記事項の確認済み・個人詳細ボタンを横並び化';
+const APP_VERSION = '1.2.8';
+const APP_VERSION_NOTES = '1.2.8 — 個人明細印刷をA4縦1ページに収まるようコンパクト化';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
