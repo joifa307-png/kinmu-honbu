@@ -171,12 +171,12 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
     border-top:2pt solid #8a847f;
     padding:4px 4px 6px;
     margin:0;
+    background:#fff;
     -webkit-print-color-adjust:exact;
     print-color-adjust:exact;
   }
   body.print-personal .personal-page:first-child{border-top:none}
   body.print-personal .personal-page:last-child{page-break-after:auto}
-  body.print-personal .personal-page:nth-child(even){background:#f0eeec}
   body.print-personal .personal-page-title{
     font-size:11pt;
     line-height:1.25;
@@ -203,11 +203,14 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
     padding:4px 6px;
     vertical-align:middle;
     border-bottom:0.5pt solid #ddd;
+    -webkit-print-color-adjust:exact;
+    print-color-adjust:exact;
+  }
+  body.print-personal .personal-detail-table tbody tr:nth-child(odd) td{
+    background:#ffffff;
   }
   body.print-personal .personal-detail-table tbody tr:nth-child(even) td{
     background:#e8e5e2;
-    -webkit-print-color-adjust:exact;
-    print-color-adjust:exact;
   }
   body.print-personal .personal-totals{
     display:flex;
@@ -458,8 +461,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.9';
-const APP_VERSION_NOTES = '1.2.9 — 個人明細印刷：表のピッチを戻し、見出し・合計欄のみコンパクト化';
+const APP_VERSION = '1.2.10';
+const APP_VERSION_NOTES = '1.2.10 — 個人明細印刷の行ストライプを全ページで統一';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
