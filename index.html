@@ -461,13 +461,15 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.13';
-const APP_VERSION_NOTES = '1.2.13 — GAS取得のタイムアウト・リトライ、スタッフキャッシュ、記録は常時週分割';
+const APP_VERSION = '1.2.14';
+const APP_VERSION_NOTES = '1.2.14 — GAS取得をJSONP優先＋スタッフローカルキャッシュ（fetchタイムアウト回避）';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
-const GAS_FETCH_TIMEOUT_MS = 25000;
+const GAS_FETCH_TIMEOUT_MS = 45000;
 const GAS_FETCH_RETRIES = 2;
 const RECORDS_CHUNK_DAYS = 7;
 const PAID_LEAVE_FETCH_CONCURRENCY = 2;
+const STAFF_CACHE_KEY = 'kinmu_honbu_staff_v1';
+const STAFF_CACHE_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
 const FACILITY_SHORT = { all: '全て', nishi: '西', minami: '南', hibari: 'ひばり', link: 'リンク' };
@@ -1159,6 +1161,30 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+function readStaffCache() {
+  try {
+    const raw = localStorage.getItem(STAFF_CACHE_KEY);
+    if (!raw) return null;
+    const { staff, at } = JSON.parse(raw);
+    if (!staff || typeof staff !== 'object') return null;
+    if (Date.now() - at > STAFF_CACHE_MAX_AGE_MS) return null;
+    return staff;
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeStaffCache(staff) {
+  try {
+    localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify({ staff, at: Date.now() }));
+  } catch (_) {}
+}
+
+function parseGasData(data, label) {
+  if (!data || data.ok === false) throw new Error((data && data.error) || (label + 'に失敗しました。'));
+  return data;
+}
+
 function parseGasResponse(res, text, label) {
   const trimmed = (text || '').trim();
   if (!trimmed) throw new Error(label + '：空の応答です。通信状況を確認してください。');
@@ -1176,24 +1202,83 @@ function parseGasResponse(res, text, label) {
     throw new Error(label + '：応答の解析に失敗しました。');
   }
   if (!res.ok) throw new Error(label + 'に失敗しました（HTTP ' + res.status + '）。');
-  if (!data || data.ok === false) throw new Error((data && data.error) || (label + 'に失敗しました。'));
-  return data;
+  return parseGasData(data, label);
 }
 
-async function fetchGas(url, label, fetchOptions = {}) {
+function gasUrlWithBust(url) {
+  const sep = url.includes('?') ? '&' : '?';
+  return url + sep + '_=' + Date.now();
+}
+
+function fetchGasJsonp(url, label, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const cb = 'kinmuGas_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+    const fullUrl = gasUrlWithBust(url) + '&callback=' + encodeURIComponent(cb);
+    const script = document.createElement('script');
+    let done = false;
+    function cleanup(err, data) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { delete window[cb]; } catch (_) { window[cb] = undefined; }
+      if (script.parentNode) script.parentNode.removeChild(script);
+      if (err) reject(err);
+      else resolve(data);
+    }
+    const timer = setTimeout(() => {
+      cleanup(new Error(label + '：タイムアウト（' + (timeoutMs / 1000) + '秒）。GASの応答が遅いか、通信を確認してください。'));
+    }, timeoutMs);
+    window[cb] = (data) => {
+      try {
+        cleanup(null, parseGasData(data, label));
+      } catch (e) {
+        cleanup(e);
+      }
+    };
+    script.onerror = () => cleanup(new Error(label + '：JSONP読み込み失敗（GAS再デプロイが必要な場合があります）'));
+    script.src = fullUrl;
+    document.head.appendChild(script);
+  });
+}
+
+function fetchGasXHR(url, label, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const timer = setTimeout(() => {
+      xhr.abort();
+      reject(new Error(label + '：タイムアウト（' + (timeoutMs / 1000) + '秒）。GASの応答が遅いか、通信を確認してください。'));
+    }, timeoutMs);
+    xhr.open('GET', gasUrlWithBust(url), true);
+    xhr.onload = () => {
+      clearTimeout(timer);
+      try {
+        resolve(parseGasResponse({ ok: xhr.status >= 200 && xhr.status < 300 }, xhr.responseText, label));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    xhr.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error(label + '：通信エラー'));
+    };
+    xhr.send();
+  });
+}
+
+async function fetchGasFetch(url, label, timeoutMs, fetchOptions = {}) {
   let lastErr = null;
   for (let attempt = 0; attempt < GAS_FETCH_RETRIES; attempt++) {
     try {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), GAS_FETCH_TIMEOUT_MS);
-      const res = await fetch(url, { ...fetchOptions, signal: ctrl.signal, redirect: 'follow' });
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const res = await fetch(gasUrlWithBust(url), { ...fetchOptions, signal: ctrl.signal, redirect: 'follow' });
       clearTimeout(timer);
       const text = await res.text();
       return parseGasResponse(res, text, label);
     } catch (e) {
       if (e && e.message && /HTML|解析|空の応答|に失敗しました/.test(e.message)) throw e;
       if (e && e.name === 'AbortError') {
-        lastErr = new Error(label + '：タイムアウト（' + (GAS_FETCH_TIMEOUT_MS / 1000) + '秒）。GASの応答が遅いか、通信を確認してください。');
+        lastErr = new Error(label + '：タイムアウト（' + (timeoutMs / 1000) + '秒）。GASの応答が遅いか、通信を確認してください。');
       } else {
         lastErr = e;
       }
@@ -1203,11 +1288,29 @@ async function fetchGas(url, label, fetchOptions = {}) {
   throw lastErr || new Error(label + '：通信に失敗しました。');
 }
 
+async function fetchGasGet(url, label, timeoutMs = GAS_FETCH_TIMEOUT_MS) {
+  try {
+    return await fetchGasJsonp(url, label, timeoutMs);
+  } catch (_) {}
+  try {
+    return await fetchGasXHR(url, label, timeoutMs);
+  } catch (_) {}
+  return await fetchGasFetch(url, label, timeoutMs);
+}
+
+async function fetchGasPost(body, label) {
+  return fetchGasFetch(GAS_URL, label, GAS_FETCH_TIMEOUT_MS, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body)
+  });
+}
+
 async function fetchStaff(force = false) {
   if (!force && staffSessionLoaded && Object.keys(staffMap).length) {
     return staffMap;
   }
-  const data = await fetchGas(`${GAS_URL}?type=staff`, 'スタッフ情報の取得');
+  const data = await fetchGasGet(`${GAS_URL}?type=staff`, 'スタッフ情報の取得');
   staffSessionLoaded = true;
   return data.staff || {};
 }
@@ -1217,7 +1320,7 @@ async function fetchAllRecordsByPeriod(from, to) {
   const all = [];
   for (const c of chunks) {
     const chunkUrl = `${GAS_URL}?type=allRecordsByPeriod&from=${encodeURIComponent(c.from)}&to=${encodeURIComponent(c.to)}`;
-    const data = await fetchGas(chunkUrl, '勤務記録の取得（' + c.from + '〜' + c.to + '）');
+    const data = await fetchGasGet(chunkUrl, '勤務記録の取得（' + c.from + '〜' + c.to + '）');
     if (Array.isArray(data.records)) all.push(...data.records);
   }
   return all;
@@ -1226,7 +1329,7 @@ async function fetchAllRecordsByPeriod(from, to) {
 async function fetchPaidLeaveRecords(from, to) {
   const url = `${GAS_URL}?type=paidLeaveRecords&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
   try {
-    const data = await fetchGas(url, '有給記録の取得');
+    const data = await fetchGasGet(url, '有給記録の取得');
     return data.records || [];
   } catch (_) {
     /* 旧デプロイ互換：失敗時はフォールバックへ */
@@ -1237,7 +1340,7 @@ async function fetchPaidLeaveRecords(from, to) {
 async function fetchRecordsByStaff(staffId, from, to) {
   const url = `${GAS_URL}?type=recordsByStaff&staffId=${encodeURIComponent(staffId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
   try {
-    const data = await fetchGas(url, '個人記録の取得');
+    const data = await fetchGasGet(url, '個人記録の取得');
     return data.records || [];
   } catch (_) {
     return [];
@@ -1273,11 +1376,7 @@ function dateRangeChunks(from, to, maxDays) {
 
 /** 記録の保存・削除など doPost 向け（upsert と同じ送り方） */
 async function postToGas(body) {
-  return fetchGas(GAS_URL, '保存', {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(body)
-  });
+  return fetchGasPost(body, '保存');
 }
 
 const PAID_LEAVE_DEFAULT_FROM = '2020-01-01';
@@ -1427,6 +1526,7 @@ let paidLeaveRecordsMap = {};
 let expandedStaffId = null;
 let loading = false;
 let loadError = null;
+let staffFetchWarning = null;
 let todayRecords = [];
 let todayViewDate = null;
 
@@ -1654,7 +1754,13 @@ function renderSummary() {
     return;
   }
 
-  $('summaryStatus').style.display = 'none';
+  if (staffFetchWarning) {
+    $('summaryStatus').style.display = 'block';
+    $('summaryStatus').className = 'status-msg';
+    $('summaryStatus').textContent = staffFetchWarning;
+  } else {
+    $('summaryStatus').style.display = 'none';
+  }
   $('summaryTableWrap').style.display = 'block';
 
   const tbody = $('summaryBody');
@@ -1996,11 +2102,26 @@ async function loadData(forceRefresh = false) {
 
   loading = true;
   loadError = null;
+  staffFetchWarning = null;
   resetTodayViewDate();
   renderSummary();
 
   try {
-    const staff = await fetchStaff(forceRefresh);
+    const cachedStaff = !forceRefresh ? readStaffCache() : null;
+    let staff;
+    try {
+      staff = await fetchStaff(forceRefresh);
+      writeStaffCache(staff);
+    } catch (staffErr) {
+      if (cachedStaff && Object.keys(cachedStaff).length) {
+        staff = cachedStaff;
+        staffMap = staff;
+        staffSessionLoaded = true;
+        staffFetchWarning = 'スタッフ情報は端末キャッシュを使用しています（最新の取得に失敗しました）';
+      } else {
+        throw staffErr;
+      }
+    }
     staffMap = staff;
     const staffList = Object.values(staffMap).filter(s => s.active !== false);
 
