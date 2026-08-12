@@ -461,8 +461,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.11';
-const APP_VERSION_NOTES = '1.2.11 — 長大期間の一括取得をやめ、GASのHTMLエラー（JSON解析失敗）を解消';
+const APP_VERSION = '1.2.12';
+const APP_VERSION_NOTES = '1.2.12 — 勤務記録を週分割取得＋GAS軽量レスポンス対応（HTMLエラー回避）';
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
@@ -1177,8 +1177,34 @@ async function fetchStaff() {
 
 async function fetchAllRecordsByPeriod(from, to) {
   const url = `${GAS_URL}?type=allRecordsByPeriod&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
-  const data = await parseGasResponse(await fetch(url), '勤務記録の取得');
-  return data.records || [];
+  try {
+    const data = await parseGasResponse(await fetch(url), '勤務記録の取得');
+    return data.records || [];
+  } catch (e) {
+    const msg = String(e && e.message || e);
+    /* 一括が HTML/タイムアウトのときだけ週分割で再試行 */
+    if (!/HTML|解析|空の応答/.test(msg)) throw e;
+    const chunks = dateRangeChunks(from, to, 7);
+    if (chunks.length <= 1) throw e;
+    const all = [];
+    for (const c of chunks) {
+      const chunkUrl = `${GAS_URL}?type=allRecordsByPeriod&from=${encodeURIComponent(c.from)}&to=${encodeURIComponent(c.to)}`;
+      const data = await parseGasResponse(await fetch(chunkUrl), '勤務記録の取得');
+      if (Array.isArray(data.records)) all.push(...data.records);
+    }
+    return all;
+  }
+}
+
+async function fetchPaidLeaveRecords(from, to) {
+  const url = `${GAS_URL}?type=paidLeaveRecords&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  try {
+    const data = await parseGasResponse(await fetch(url), '有給記録の取得');
+    return data.records || [];
+  } catch (_) {
+    /* 旧デプロイ互換：失敗時は空（有給残は — 表示） */
+    return null;
+  }
 }
 
 async function fetchRecordsByStaff(staffId, from, to) {
@@ -1189,6 +1215,19 @@ async function fetchRecordsByStaff(staffId, from, to) {
   } catch (_) {
     return [];
   }
+}
+
+/** from〜to を maxDays 日ごとのチャンクに分割（両端含む） */
+function dateRangeChunks(from, to, maxDays) {
+  const chunks = [];
+  let cur = from;
+  while (cur <= to) {
+    let end = addDays(cur, maxDays - 1);
+    if (end > to) end = to;
+    chunks.push({ from: cur, to: end });
+    cur = addDays(end, 1);
+  }
+  return chunks.length ? chunks : [{ from, to }];
 }
 
 /** 記録の保存・削除など doPost 向け（upsert と同じ送り方） */
@@ -1224,14 +1263,36 @@ function paidLeaveFromForStaff(staff) {
   return staff.paidLeaveAsOf ? addDays(staff.paidLeaveAsOf, 1) : PAID_LEAVE_DEFAULT_FROM;
 }
 
-async function loadPaidLeaveForStaff(staff) {
-  if (!staffHasPaidLeaveBalance(staff)) {
-    return { staffId: staff.staffId, records: [] };
-  }
-  const from = paidLeaveFromForStaff(staff);
+async function loadPaidLeaveMap(staffList) {
+  const withBal = staffList.filter(staffHasPaidLeaveBalance);
+  const emptyMap = {};
+  staffList.forEach(s => { emptyMap[s.staffId] = []; });
+  if (!withBal.length) return emptyMap;
+
+  let from = paidLeaveFromForStaff(withBal[0]);
+  withBal.forEach(s => { from = minDateStr(from, paidLeaveFromForStaff(s)); });
   const to = addDays(todayStr(), 365);
-  const records = await fetchRecordsByStaff(staff.staffId, from, to);
-  return { staffId: staff.staffId, records };
+
+  const bulk = await fetchPaidLeaveRecords(from, to);
+  if (bulk) {
+    const map = { ...emptyMap };
+    bulk.forEach(r => {
+      const sid = normStaffId(r.staffId);
+      const key = Object.keys(map).find(k => normStaffId(k) === sid) || r.staffId;
+      if (!map[key]) map[key] = [];
+      map[key].push(r);
+    });
+    return map;
+  }
+
+  /* 旧GAS互換フォールバック：スタッフごと取得 */
+  const paidResults = await Promise.all(withBal.map(async staff => {
+    const records = await fetchRecordsByStaff(staff.staffId, paidLeaveFromForStaff(staff), to);
+    return { staffId: staff.staffId, records };
+  }));
+  const map = { ...emptyMap };
+  paidResults.forEach(r => { map[r.staffId] = r.records; });
+  return map;
 }
 
 function isDateInPeriod(dateStr, p) {
@@ -1902,7 +1963,7 @@ async function loadData(forceRefresh = false) {
     staffMap = staff;
     const staffList = Object.values(staffMap).filter(s => s.active !== false);
 
-    /* 月度分だけ一括取得（長大期間の一括取得は GAS が HTML エラーを返し JSON 解析に失敗する） */
+    /* 月度分を週単位で分割取得（一括だと GAS が HTML タイムアウトを返すことがある） */
     periodRecords = await fetchAllRecordsByPeriod(period.from, period.to);
 
     const today = todayStr();
@@ -1915,10 +1976,7 @@ async function loadData(forceRefresh = false) {
       todayViewDate = defaultTodayViewDate(period);
     }
 
-    /* 有給残はスタッフごとに recordsByStaff で取得（期間を広げすぎない） */
-    const paidResults = await Promise.all(staffList.map(s => loadPaidLeaveForStaff(s)));
-    paidLeaveRecordsMap = {};
-    paidResults.forEach(r => { paidLeaveRecordsMap[r.staffId] = r.records; });
+    paidLeaveRecordsMap = await loadPaidLeaveMap(staffList);
 
     periodDataCache.set(cacheKey, snapshotPeriodCache());
 
