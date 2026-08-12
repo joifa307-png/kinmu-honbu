@@ -2108,21 +2108,18 @@ async function loadData(forceRefresh = false) {
 
   try {
     const cachedStaff = !forceRefresh ? readStaffCache() : null;
-    let staff;
-    try {
+    let staff = null;
+    if (!forceRefresh && cachedStaff && Object.keys(cachedStaff).length) {
+      // 取得に失敗しても画面を止めないため、まずキャッシュを優先する
+      staff = cachedStaff;
+      staffMap = staff;
+      staffSessionLoaded = true;
+      staffFetchWarning = 'スタッフ情報は端末キャッシュを使用しています（最新取得をスキップ）';
+    } else {
       staff = await fetchStaff(forceRefresh);
       writeStaffCache(staff);
-    } catch (staffErr) {
-      if (cachedStaff && Object.keys(cachedStaff).length) {
-        staff = cachedStaff;
-        staffMap = staff;
-        staffSessionLoaded = true;
-        staffFetchWarning = 'スタッフ情報は端末キャッシュを使用しています（最新の取得に失敗しました）';
-      } else {
-        throw staffErr;
-      }
+      staffMap = staff;
     }
-    staffMap = staff;
     const staffList = Object.values(staffMap).filter(s => s.active !== false);
 
     /* 月度分を週単位で分割取得（一括だと GAS が HTML タイムアウトを返すことがある） */
