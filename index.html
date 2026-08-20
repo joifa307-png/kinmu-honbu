@@ -473,8 +473,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.17';
-const APP_VERSION_NOTES = '1.2.17 — 個人明細Excel：横幅活用・備考1行・行高圧縮で1人1枚';
+const APP_VERSION = '1.2.18';
+const APP_VERSION_NOTES = '1.2.18 — 個人明細Excel：データ行16pt・A～H列55px統一・本部訂正スタンプ非印字';
 const PERSONAL_XLSX_DATA_START_ROW = 4;
 const PERSONAL_XLSX_HEADER_ROW = 3;
 const PERSONAL_XLSX_STRIPE_RGB = 'E8E5E2';
@@ -482,8 +482,9 @@ const PERSONAL_XLSX_NOTE_MAX_LEN = 72;
 const PERSONAL_XLSX_FONT_DATA = 10;
 const PERSONAL_XLSX_FONT_NOTE = 9;
 const PERSONAL_XLSX_FONT_HEADER = 10;
-const PERSONAL_XLSX_ROW_DATA = 12.5;
-const PERSONAL_XLSX_COL_WIDTHS = [7, 4, 6, 10, 12, 5, 6, 6, 36];
+const PERSONAL_XLSX_ROW_DATA = 16;
+const PERSONAL_XLSX_COL_DATA_PX = 55;
+const PERSONAL_XLSX_COL_NOTE_PX = 480;
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const GAS_FETCH_TIMEOUT_MS = 45000;
 const GAS_FETCH_RETRIES = 2;
@@ -987,6 +988,28 @@ function buildPersonalNote(rec) {
   return buildRecordNote(rec);
 }
 
+/** 出力・印刷用：本部訂正/確認スタンプを除去 */
+function stripHonbuCorrectionStamp(text) {
+  return String(text || '')
+    .replace(/【本部訂正\s*\d{4}-\d{2}-\d{2}】/g, '')
+    .replace(/【本部確認[^\】]*】/g, '')
+    .replace(/\s*／\s*(?=／|$)/g, '')
+    .replace(/^／+|／+$/g, '')
+    .trim();
+}
+
+function personalNoteForOutput(note) {
+  if (!note || note === '—') return '—';
+  const stripped = stripHonbuCorrectionStamp(note);
+  return stripped || '—';
+}
+
+function personalXlsxColWidths() {
+  const cols = Array(8).fill({ wpx: PERSONAL_XLSX_COL_DATA_PX });
+  cols.push({ wpx: PERSONAL_XLSX_COL_NOTE_PX });
+  return cols;
+}
+
 function fmtDateShort(dateStr) {
   const [, m, d] = dateStr.split('-').map(Number);
   return `${m}/${d}`;
@@ -1057,8 +1080,8 @@ function personalTotalsText(agg) {
 }
 
 function personalRowToArray(row, forExcel = false) {
-  let note = row.note;
-  if (forExcel && note && String(note).length > PERSONAL_XLSX_NOTE_MAX_LEN) {
+  let note = forExcel ? personalNoteForOutput(row.note) : row.note;
+  if (forExcel && note && note !== '—' && String(note).length > PERSONAL_XLSX_NOTE_MAX_LEN) {
     note = String(note).slice(0, PERSONAL_XLSX_NOTE_MAX_LEN - 1) + '…';
   }
   return [row.date, row.dow, row.status, row.shift, row.time, row.brk, row.work, row.ot, note];
@@ -1117,10 +1140,10 @@ function stylePersonalXlsxWorksheet(ws, dataRowCount) {
     }
   }
 
-  for (let c = 0; c < 7; c++) {
+  for (let c = 0; c < 8; c++) {
     setXlsxCellStyle(ws, totalsLabelRow, c, {
       font: { sz: 8, color: { rgb: '6B6562' } },
-      alignment: { horizontal: 'center', vertical: 'center' }
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: false }
     });
     setXlsxCellStyle(ws, totalsValueRow, c, {
       font: { bold: true, sz: PERSONAL_XLSX_FONT_DATA, color: { rgb: '37322F' } },
@@ -1129,7 +1152,7 @@ function stylePersonalXlsxWorksheet(ws, dataRowCount) {
     });
   }
 
-  ws['!cols'] = PERSONAL_XLSX_COL_WIDTHS.map(wch => ({ wch }));
+  ws['!cols'] = personalXlsxColWidths();
 
   ws['!rows'] = [];
   for (let r = 0; r <= lastRow; r++) {
@@ -1183,10 +1206,11 @@ function buildPersonalTableHtml(rows) {
 
 function buildPersonalPrintBlock(staff, rows, agg) {
   const job = JOB_LABELS[staff.jobType] || staff.jobType || '—';
+  const printRows = rows.map(r => ({ ...r, note: personalNoteForOutput(r.note) }));
   return `<div class="personal-page">
     <div class="personal-page-title">${esc(staff.name)}（${esc(facilityLabel(staff.facilityId))}・${esc(job)}）</div>
     <div class="personal-page-sub">${esc(period.label)}（${esc(period.rangeLabel)}）</div>
-    ${buildPersonalTableHtml(rows)}
+    ${buildPersonalTableHtml(printRows)}
     <div class="personal-totals">${personalTotalsHtml(agg)}</div>
   </div>`;
 }
