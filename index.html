@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>出勤簿（本部）</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{font-size:16px}
@@ -153,8 +153,9 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 /* 印刷用 */
 .print-title{display:none}
+@page{size:A4 portrait;margin:10mm}
+@page personal-landscape{size:A4 landscape;margin:8mm}
 @media print{
-  @page{size:A4 portrait;margin:10mm}
   body{background:#fff}
   .app{max-width:none;padding:0}
   .header .header-actions,.tabs,.btn,.facility-filter,.period-nav button,.no-print{display:none!important}
@@ -163,6 +164,7 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
   body:not(.print-personal) .tab-panel[data-tab="summary"].active{display:block!important}
   body:not(.print-personal) .print-title{display:block!important;font-size:14pt;font-weight:700;margin-bottom:12px;text-align:center}
   body.print-personal .personal-print-area{display:block!important}
+  body.print-personal{page:personal-landscape}
   body.print-personal .print-title{display:none!important}
   body.print-personal .personal-page{
     page-break-after:always;
@@ -190,21 +192,31 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
     margin:0 0 4px;
   }
   body.print-personal .personal-detail-table{
-    font-size:9pt;
-    line-height:1.3;
+    font-size:8pt;
+    line-height:1.15;
     width:100%;
+    table-layout:fixed;
   }
   body.print-personal .personal-detail-table thead th{
-    padding:4px 6px;
-    font-size:9pt;
+    padding:2px 4px;
+    font-size:8pt;
     border-bottom:1.5pt solid #c4bfbb;
   }
   body.print-personal .personal-detail-table tbody td{
-    padding:4px 6px;
+    padding:1px 4px;
     vertical-align:middle;
     border-bottom:0.5pt solid #ddd;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
     -webkit-print-color-adjust:exact;
     print-color-adjust:exact;
+  }
+  body.print-personal .personal-detail-table tbody td:last-child{
+    white-space:normal;
+    word-break:break-all;
+    font-size:7.5pt;
+    line-height:1.1;
   }
   body.print-personal .personal-detail-table tbody tr:nth-child(odd) td{
     background:#ffffff;
@@ -461,8 +473,12 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.14';
-const APP_VERSION_NOTES = '1.2.14 — GAS取得をJSONP優先＋スタッフローカルキャッシュ（fetchタイムアウト回避）';
+const APP_VERSION = '1.2.15';
+const APP_VERSION_NOTES = '1.2.15 — 個人明細Excelの印刷1枚化（A4横）＋ストライプ行';
+const PERSONAL_XLSX_DATA_START_ROW = 4;
+const PERSONAL_XLSX_HEADER_ROW = 3;
+const PERSONAL_XLSX_STRIPE_RGB = 'E8E5E2';
+const PERSONAL_XLSX_NOTE_MAX_LEN = 48;
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
 const GAS_FETCH_TIMEOUT_MS = 45000;
 const GAS_FETCH_RETRIES = 2;
@@ -1035,8 +1051,112 @@ function personalTotalsText(agg) {
   return `出勤日数:${agg.workDays} 休出日数:${agg.holDays} 有休日数:${agg.paidDays} 欠勤日数:${agg.absDays} 実働合計:${fmtDurJa(agg.workMin)} 残業合計:${agg.otMin > 0 ? fmtDurJa(agg.otMin) : '—'}`;
 }
 
-function personalRowToArray(row) {
-  return [row.date, row.dow, row.status, row.shift, row.time, row.brk, row.work, row.ot, row.note];
+function personalRowToArray(row, forExcel = false) {
+  let note = row.note;
+  if (forExcel && note && String(note).length > PERSONAL_XLSX_NOTE_MAX_LEN) {
+    note = String(note).slice(0, PERSONAL_XLSX_NOTE_MAX_LEN - 1) + '…';
+  }
+  return [row.date, row.dow, row.status, row.shift, row.time, row.brk, row.work, row.ot, note];
+}
+
+function personalExcelTotalsRows(agg) {
+  return {
+    labels: ['', '出勤日数', '休出日数', '有休日数', '欠勤日数', '実働合計', '残業合計', '', ''],
+    values: ['合計', `${agg.workDays}日`, `${agg.holDays}日`, `${agg.paidDays}日`, `${agg.absDays}日`, fmtDurJa(agg.workMin), agg.otMin > 0 ? fmtDurJa(agg.otMin) : '—', '', '']
+  };
+}
+
+function setXlsxCellStyle(ws, r, c, style) {
+  const addr = XLSX.utils.encode_cell({ r, c });
+  if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+  ws[addr].s = style;
+}
+
+function stylePersonalXlsxWorksheet(ws, dataRowCount) {
+  const cols = PERSONAL_HEADERS.length;
+  const totalsLabelRow = PERSONAL_XLSX_DATA_START_ROW + dataRowCount + 1;
+  const totalsValueRow = totalsLabelRow + 1;
+  const lastRow = totalsValueRow;
+  const thinBorder = { style: 'thin', color: { rgb: 'C4BFBB' } };
+  const headerStyle = {
+    font: { bold: true, sz: 9, color: { rgb: '37322F' } },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    border: { bottom: thinBorder }
+  };
+  const dataBase = {
+    font: { sz: 8, color: { rgb: '37322F' } },
+    alignment: { vertical: 'center', shrinkToFit: true }
+  };
+  const noteStyle = {
+    font: { sz: 7.5, color: { rgb: '37322F' } },
+    alignment: { vertical: 'center', wrapText: true, shrinkToFit: true }
+  };
+  const stripeFill = {
+    patternType: 'solid',
+    fgColor: { rgb: PERSONAL_XLSX_STRIPE_RGB }
+  };
+
+  setXlsxCellStyle(ws, 0, 0, { font: { bold: true, sz: 11 } });
+  setXlsxCellStyle(ws, 1, 0, { font: { sz: 9 } });
+
+  for (let c = 0; c < cols; c++) setXlsxCellStyle(ws, PERSONAL_XLSX_HEADER_ROW, c, headerStyle);
+
+  for (let r = 0; r < dataRowCount; r++) {
+    const rowIdx = PERSONAL_XLSX_DATA_START_ROW + r;
+    const isStripe = r % 2 === 1;
+    for (let c = 0; c < cols; c++) {
+      const style = { ...(c === cols - 1 ? noteStyle : dataBase) };
+      if (c >= 5 && c <= 7) style.alignment = { ...style.alignment, horizontal: 'right' };
+      if (isStripe) style.fill = stripeFill;
+      setXlsxCellStyle(ws, rowIdx, c, style);
+    }
+  }
+
+  for (let c = 0; c < 7; c++) {
+    setXlsxCellStyle(ws, totalsLabelRow, c, {
+      font: { sz: 7, color: { rgb: '6B6562' } },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    });
+    setXlsxCellStyle(ws, totalsValueRow, c, {
+      font: { bold: true, sz: 8, color: { rgb: '37322F' } },
+      alignment: { horizontal: 'center', vertical: 'center' },
+      border: { top: thinBorder }
+    });
+  }
+
+  ws['!cols'] = [
+    { wch: 6.5 },
+    { wch: 3.5 },
+    { wch: 5.5 },
+    { wch: 9 },
+    { wch: 11 },
+    { wch: 4.5 },
+    { wch: 5 },
+    { wch: 5 },
+    { wch: 16 }
+  ];
+
+  ws['!rows'] = [];
+  for (let r = 0; r <= lastRow; r++) {
+    if (r === 0) ws['!rows'][r] = { hpt: 18 };
+    else if (r === 1) ws['!rows'][r] = { hpt: 14 };
+    else if (r === PERSONAL_XLSX_HEADER_ROW) ws['!rows'][r] = { hpt: 15 };
+    else if (r >= PERSONAL_XLSX_DATA_START_ROW && r < PERSONAL_XLSX_DATA_START_ROW + dataRowCount) ws['!rows'][r] = { hpt: 11.5 };
+    else ws['!rows'][r] = { hpt: 13 };
+  }
+
+  ws['!merges'] = ws['!merges'] || [];
+  ws['!pageSetup'] = {
+    paperSize: 9,
+    orientation: 'landscape',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 1,
+    horizontalDpi: 300,
+    verticalDpi: 300
+  };
+  ws['!margins'] = { left: 0.25, right: 0.25, top: 0.35, bottom: 0.3, header: 0.15, footer: 0.15 };
+  ws['!print'] = { printArea: 'A1:I' + (lastRow + 1) };
 }
 
 function buildPersonalTableBodyHtml(rows, withEdit) {
@@ -2027,33 +2147,27 @@ function exportPersonalXlsx() {
     const job = JOB_LABELS[staff.jobType] || staff.jobType || '';
     const title = `${staff.name}（${facilityLabel(staff.facilityId)}・${job}）`;
     const sub = `${period.label}（${period.rangeLabel}）`;
+    const totals = personalExcelTotalsRows(agg);
     const aoa = [
       [title],
       [sub],
       [],
       PERSONAL_HEADERS,
-      ...rows.map(personalRowToArray),
+      ...rows.map(row => personalRowToArray(row, true)),
       [],
-      ['合計', '', '', '', '', '', '', '', personalTotalsText(agg)]
+      totals.labels,
+      totals.values
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!merges'] = [
       { s: { r: 0, c: 0 }, e: { r: 0, c: PERSONAL_HEADERS.length - 1 } },
       { s: { r: 1, c: 0 }, e: { r: 1, c: PERSONAL_HEADERS.length - 1 } }
     ];
-    ws['!cols'] = PERSONAL_HEADERS.map((h, ci) => {
-      let max = h.length;
-      rows.forEach(r => {
-        const val = personalRowToArray(r)[ci];
-        const len = String(val ?? '').length;
-        if (len > max) max = len;
-      });
-      return { wch: Math.min(Math.max(max + 2, 6), 24) };
-    });
+    stylePersonalXlsxWorksheet(ws, rows.length);
     XLSX.utils.book_append_sheet(wb, ws, uniqueSheetName(staff.name, usedNames));
   });
 
-  XLSX.writeFile(wb, personalExportFileName('xlsx'));
+  XLSX.writeFile(wb, personalExportFileName('xlsx'), { cellStyles: true });
 }
 
 function doPrint() {
