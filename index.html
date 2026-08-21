@@ -474,14 +474,17 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.21';
-const APP_VERSION_NOTES = '1.2.21 — 個人明細を各人1枚に強制（備考1行化＋Excel fitToPage）';
+const APP_VERSION = '1.2.23';
+const APP_VERSION_NOTES = '1.2.23 — 備考セルのみ文字数に応じてフォント自動縮小（全体縮小はしない）';
 /* テンプレートファイル（Excel出力）.xlsx 準拠 */
 const PERSONAL_XLSX_HEADERS = ['日付', '曜日', '区分', 'シフト', '時間', '休憩', '実働', '残業', '備考'];
 const PERSONAL_XLSX_HEADER_ROW = 3;
 const PERSONAL_XLSX_DATA_START_ROW = 4;
 const PERSONAL_XLSX_STRIPE_RGB = 'E8E5E2';
-const PERSONAL_XLSX_NOTE_MAX_LEN = 48;
+const PERSONAL_XLSX_NOTE_MAX_LEN = 80;
+const PERSONAL_XLSX_NOTE_FONT_BASE = 9;
+const PERSONAL_XLSX_NOTE_FONT_MIN = 5;
+const PERSONAL_XLSX_NOTE_WIDTH_UNITS = 56;
 const PERSONAL_XLSX_COL_WIDTHS = [7.6, 6.7, 9.1, 9.1, 15.3, 9.1, 9.1, 9.1, 58.3];
 const PERSONAL_XLSX_ROW_TITLE = 18;
 const PERSONAL_XLSX_ROW_SUB = 14.1;
@@ -1020,6 +1023,24 @@ function personalNoteForExcel(note) {
   return n;
 }
 
+/** 全角を2・半角を1として幅を見積もり、備考セルのフォントサイズを決める */
+function noteTextWidthUnits(text) {
+  let units = 0;
+  for (const ch of String(text || '')) {
+    units += ch.charCodeAt(0) > 0xff ? 2 : 1;
+  }
+  return units;
+}
+
+function noteFontSizeForText(text) {
+  const s = String(text || '');
+  if (!s || s === '—') return PERSONAL_XLSX_NOTE_FONT_BASE;
+  const units = noteTextWidthUnits(s);
+  if (units <= PERSONAL_XLSX_NOTE_WIDTH_UNITS) return PERSONAL_XLSX_NOTE_FONT_BASE;
+  const sz = Math.floor(PERSONAL_XLSX_NOTE_FONT_BASE * PERSONAL_XLSX_NOTE_WIDTH_UNITS / units);
+  return Math.max(PERSONAL_XLSX_NOTE_FONT_MIN, sz);
+}
+
 function personalXlsxColWidths() {
   return PERSONAL_XLSX_COL_WIDTHS.map(wch => ({ wch }));
 }
@@ -1143,8 +1164,7 @@ function stylePersonalXlsxWorksheet(ws, dataRowCount) {
     font: { sz: 10, color: { rgb: '37322F' } },
     alignment: { horizontal: 'right', vertical: 'center', wrapText: false }
   };
-  const noteStyle = {
-    font: { sz: 9, color: { rgb: '37322F' } },
+  const noteStyleBase = {
     alignment: { vertical: 'center', wrapText: false, shrinkToFit: true }
   };
   const stripeFill = {
@@ -1168,8 +1188,14 @@ function stylePersonalXlsxWorksheet(ws, dataRowCount) {
     const rowBorder = isLast ? dataLastBorder : dataBorder;
     for (let c = 0; c < cols; c++) {
       let style;
-      if (c === 8) style = { ...noteStyle };
-      else if (c === 4) style = { ...dataTime };
+      if (c === 8) {
+        const addr = XLSX.utils.encode_cell({ r: rowIdx, c: 8 });
+        const noteVal = (ws[addr] && ws[addr].v != null) ? String(ws[addr].v) : '';
+        style = {
+          ...noteStyleBase,
+          font: { sz: noteFontSizeForText(noteVal), color: { rgb: '37322F' } }
+        };
+      } else if (c === 4) style = { ...dataTime };
       else if (c >= 5 && c <= 7) style = { ...dataRight };
       else style = { ...dataCenter };
       style = withXlsxBorder(style, rowBorder);
@@ -1218,8 +1244,6 @@ function stylePersonalXlsxWorksheet(ws, dataRowCount) {
   ws['!merges'] = (ws['!merges'] || []).concat([
     { s: { r: totalsLabelRow, c: 1 }, e: { r: totalsValueRow, c: 1 } }
   ]);
-  /* fitToPage は sheetPr 側も必須。これがないと Excel が拡大縮小を無視することがある */
-  ws['!sheetPr'] = { pageSetUpPr: { fitToPage: true } };
   ws['!pageSetup'] = {
     paperSize: 9,
     orientation: 'landscape',
@@ -1233,11 +1257,14 @@ function stylePersonalXlsxWorksheet(ws, dataRowCount) {
   ws['!print'] = { printArea: 'A1:I' + (lastRow + 1) };
 }
 
-function buildPersonalTableBodyHtml(rows, withEdit) {
+function buildPersonalTableBodyHtml(rows, withEdit, autoNoteFont) {
   return rows.map(row => {
     const cls = row.empty ? ' class="empty"' : '';
     const editCell = withEdit
       ? `<td class="no-print"><button type="button" class="btn btn-edit-rec" data-date="${esc(row.dateKey)}">訂正</button></td>`
+      : '';
+    const noteStyle = autoNoteFont
+      ? ` style="font-size:${noteFontSizeForText(row.note)}pt"`
       : '';
     return `<tr${cls}>
       <td>${esc(row.date)}</td>
@@ -1248,16 +1275,16 @@ function buildPersonalTableBodyHtml(rows, withEdit) {
       <td class="num">${esc(row.brk)}</td>
       <td class="num">${esc(row.work)}</td>
       <td class="num">${esc(row.ot)}</td>
-      <td>${esc(row.note)}</td>
+      <td${noteStyle}>${esc(row.note)}</td>
       ${editCell}
     </tr>`;
   }).join('');
 }
 
-function buildPersonalTableHtml(rows) {
+function buildPersonalTableHtml(rows, autoNoteFont) {
   return `<table class="personal-detail-table"><thead><tr>
     ${PERSONAL_HEADERS.map(h => `<th${h === '休憩' || h === '実働' || h === '残業' ? ' class="num"' : ''}>${h}</th>`).join('')}
-  </tr></thead><tbody>${buildPersonalTableBodyHtml(rows)}</tbody></table>`;
+  </tr></thead><tbody>${buildPersonalTableBodyHtml(rows, false, autoNoteFont)}</tbody></table>`;
 }
 
 function buildPersonalPrintBlock(staff, rows, agg) {
@@ -1266,7 +1293,7 @@ function buildPersonalPrintBlock(staff, rows, agg) {
   return `<div class="personal-page">
     <div class="personal-page-title">${esc(staff.name)}（${esc(facilityLabel(staff.facilityId))}・${esc(job)}）</div>
     <div class="personal-page-sub">${esc(period.label)}（${esc(period.rangeLabel)}）</div>
-    ${buildPersonalTableHtml(printRows)}
+    ${buildPersonalTableHtml(printRows, true)}
     <div class="personal-totals">${personalTotalsHtml(agg)}</div>
   </div>`;
 }
