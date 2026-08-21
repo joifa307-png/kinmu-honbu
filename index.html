@@ -213,8 +213,9 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
     print-color-adjust:exact;
   }
   body.print-personal .personal-detail-table tbody td:last-child{
-    white-space:normal;
-    word-break:break-all;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
     font-size:7.5pt;
     line-height:1.1;
   }
@@ -473,14 +474,14 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.20';
-const APP_VERSION_NOTES = '1.2.20 — 個人明細Excel：合計表記・確認済非印字・縦hair罫線をテンプレ準拠';
+const APP_VERSION = '1.2.21';
+const APP_VERSION_NOTES = '1.2.21 — 個人明細を各人1枚に強制（備考1行化＋Excel fitToPage）';
 /* テンプレートファイル（Excel出力）.xlsx 準拠 */
 const PERSONAL_XLSX_HEADERS = ['日付', '曜日', '区分', 'シフト', '時間', '休憩', '実働', '残業', '備考'];
 const PERSONAL_XLSX_HEADER_ROW = 3;
 const PERSONAL_XLSX_DATA_START_ROW = 4;
 const PERSONAL_XLSX_STRIPE_RGB = 'E8E5E2';
-const PERSONAL_XLSX_NOTE_MAX_LEN = 72;
+const PERSONAL_XLSX_NOTE_MAX_LEN = 48;
 const PERSONAL_XLSX_COL_WIDTHS = [7.6, 6.7, 9.1, 9.1, 15.3, 9.1, 9.1, 9.1, 58.3];
 const PERSONAL_XLSX_ROW_TITLE = 18;
 const PERSONAL_XLSX_ROW_SUB = 14.1;
@@ -1004,8 +1005,19 @@ function stripHonbuCorrectionStamp(text) {
 
 function personalNoteForOutput(note) {
   if (!note || note === '—') return '—';
-  const stripped = stripHonbuCorrectionStamp(note);
+  const stripped = stripHonbuCorrectionStamp(note)
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   return stripped || '—';
+}
+
+function personalNoteForExcel(note) {
+  let n = personalNoteForOutput(note);
+  if (n !== '—' && n.length > PERSONAL_XLSX_NOTE_MAX_LEN) {
+    n = n.slice(0, PERSONAL_XLSX_NOTE_MAX_LEN - 1) + '…';
+  }
+  return n;
 }
 
 function personalXlsxColWidths() {
@@ -1082,10 +1094,7 @@ function personalTotalsText(agg) {
 }
 
 function personalRowToArray(row, forExcel = false) {
-  let note = forExcel ? personalNoteForOutput(row.note) : row.note;
-  if (forExcel && note && note !== '—' && String(note).length > PERSONAL_XLSX_NOTE_MAX_LEN) {
-    note = String(note).slice(0, PERSONAL_XLSX_NOTE_MAX_LEN - 1) + '…';
-  }
+  const note = forExcel ? personalNoteForExcel(row.note) : row.note;
   return [row.date, row.dow, row.status, row.shift, row.time, row.brk, row.work, row.ot, note];
 }
 
@@ -1209,6 +1218,8 @@ function stylePersonalXlsxWorksheet(ws, dataRowCount) {
   ws['!merges'] = (ws['!merges'] || []).concat([
     { s: { r: totalsLabelRow, c: 1 }, e: { r: totalsValueRow, c: 1 } }
   ]);
+  /* fitToPage は sheetPr 側も必須。これがないと Excel が拡大縮小を無視することがある */
+  ws['!sheetPr'] = { pageSetUpPr: { fitToPage: true } };
   ws['!pageSetup'] = {
     paperSize: 9,
     orientation: 'landscape',
@@ -1251,7 +1262,7 @@ function buildPersonalTableHtml(rows) {
 
 function buildPersonalPrintBlock(staff, rows, agg) {
   const job = JOB_LABELS[staff.jobType] || staff.jobType || '—';
-  const printRows = rows.map(r => ({ ...r, note: personalNoteForOutput(r.note) }));
+  const printRows = rows.map(r => ({ ...r, note: personalNoteForExcel(r.note) }));
   return `<div class="personal-page">
     <div class="personal-page-title">${esc(staff.name)}（${esc(facilityLabel(staff.facilityId))}・${esc(job)}）</div>
     <div class="personal-page-sub">${esc(period.label)}（${esc(period.rangeLabel)}）</div>
