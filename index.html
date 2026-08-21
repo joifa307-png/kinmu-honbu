@@ -473,8 +473,8 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 
 <script>
 /* ── 定数 ── */
-const APP_VERSION = '1.2.19';
-const APP_VERSION_NOTES = '1.2.19 — 個人明細Excelをテンプレートファイル（Excel出力）に合わせて再調整';
+const APP_VERSION = '1.2.20';
+const APP_VERSION_NOTES = '1.2.20 — 個人明細Excel：合計表記・確認済非印字・縦hair罫線をテンプレ準拠';
 /* テンプレートファイル（Excel出力）.xlsx 準拠 */
 const PERSONAL_XLSX_HEADERS = ['日付', '曜日', '区分', 'シフト', '時間', '休憩', '実働', '残業', '備考'];
 const PERSONAL_XLSX_HEADER_ROW = 3;
@@ -996,6 +996,7 @@ function stripHonbuCorrectionStamp(text) {
   return String(text || '')
     .replace(/【本部訂正\s*\d{4}-\d{2}-\d{2}】/g, '')
     .replace(/【本部確認[^\】]*】/g, '')
+    .replace(/【確認済み?】/g, '')
     .replace(/\s*／\s*(?=／|$)/g, '')
     .replace(/^／+|／+$/g, '')
     .trim();
@@ -1090,7 +1091,7 @@ function personalRowToArray(row, forExcel = false) {
 
 function personalExcelTotalsRows(agg) {
   return {
-    labels: ['', '合計ゴウケイ', '出勤日数', '休出日数', '有休日数', '欠勤日数', '実働合計', '残業合計', ''],
+    labels: ['', '合計', '出勤日数', '休出日数', '有休日数', '欠勤日数', '実働合計', '残業合計', ''],
     values: ['', '', `${agg.workDays}日`, `${agg.holDays}日`, `${agg.paidDays}日`, `${agg.absDays}日`, fmtDurJa(agg.workMin), agg.otMin > 0 ? fmtDurJa(agg.otMin) : '—', '']
   };
 }
@@ -1101,16 +1102,25 @@ function setXlsxCellStyle(ws, r, c, style) {
   ws[addr].s = style;
 }
 
+function withXlsxBorder(style, border) {
+  return { ...style, border: { ...(style.border || {}), ...border } };
+}
+
 function stylePersonalXlsxWorksheet(ws, dataRowCount) {
   const cols = PERSONAL_XLSX_HEADERS.length;
   const totalsLabelRow = PERSONAL_XLSX_DATA_START_ROW + dataRowCount + 1;
   const totalsValueRow = totalsLabelRow + 1;
   const lastRow = totalsValueRow;
   const thinBorder = { style: 'thin', color: { rgb: 'C4BFBB' } };
+  /* テンプレの「薄い波線」＝ Excel hair（極細縦線） */
+  const hairBorder = { style: 'hair', color: { rgb: 'A8A29E' } };
+  const headerBorder = { left: hairBorder, right: hairBorder, bottom: thinBorder };
+  const dataBorder = { left: hairBorder, right: hairBorder };
+  const dataLastBorder = { left: hairBorder, right: hairBorder, bottom: hairBorder };
   const headerStyle = {
     font: { bold: true, sz: 10, color: { rgb: '37322F' } },
     alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-    border: { bottom: thinBorder }
+    border: headerBorder
   };
   const dataCenter = {
     font: { sz: 10, color: { rgb: '37322F' } },
@@ -1137,7 +1147,7 @@ function stylePersonalXlsxWorksheet(ws, dataRowCount) {
   setXlsxCellStyle(ws, 1, 0, { font: { sz: 10 } });
 
   for (let c = 0; c < cols; c++) {
-    const style = { ...headerStyle };
+    const style = { ...headerStyle, border: { ...headerBorder } };
     if (c === 3) style.font = { name: 'ＭＳ ゴシック', bold: true, sz: 10, color: { rgb: '37322F' } };
     setXlsxCellStyle(ws, PERSONAL_XLSX_HEADER_ROW, c, style);
   }
@@ -1145,12 +1155,15 @@ function stylePersonalXlsxWorksheet(ws, dataRowCount) {
   for (let r = 0; r < dataRowCount; r++) {
     const rowIdx = PERSONAL_XLSX_DATA_START_ROW + r;
     const isStripe = r % 2 === 1;
+    const isLast = r === dataRowCount - 1;
+    const rowBorder = isLast ? dataLastBorder : dataBorder;
     for (let c = 0; c < cols; c++) {
       let style;
       if (c === 8) style = { ...noteStyle };
       else if (c === 4) style = { ...dataTime };
       else if (c >= 5 && c <= 7) style = { ...dataRight };
       else style = { ...dataCenter };
+      style = withXlsxBorder(style, rowBorder);
       if (isStripe) style.fill = stripeFill;
       setXlsxCellStyle(ws, rowIdx, c, style);
     }
@@ -1159,7 +1172,7 @@ function stylePersonalXlsxWorksheet(ws, dataRowCount) {
   for (let c = 0; c < cols; c++) {
     if (c === 1) {
       setXlsxCellStyle(ws, totalsLabelRow, c, {
-        font: { name: 'ＭＳ Ｐゴシック', sz: 11, color: { rgb: '37322F' } },
+        font: { name: 'ＭＳ Ｐゴシック', bold: true, sz: 11, color: { rgb: '37322F' } },
         alignment: { horizontal: 'center', vertical: 'center' }
       });
       setXlsxCellStyle(ws, totalsValueRow, c, {
