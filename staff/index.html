@@ -236,6 +236,7 @@ const SHIFT_MASTER = [
   {shiftKey:"minami_kaigo_tokutei", facilityId:"minami", jobType:"kaigo_toku", label:"日勤"},
   {shiftKey:"minami_chori_a",      facilityId:"minami", jobType:"chori",    label:"調理A"},
   {shiftKey:"minami_chori_b",      facilityId:"minami", jobType:"chori",    label:"調理B"},
+  {shiftKey:"minami_kaigo_nyuyoku", facilityId:"minami", jobType:"kaigo",    label:"入浴メイン"},
   {shiftKey:"hibari_helper_normal",   facilityId:"hibari", jobType:"helper",   label:"通常"},
   {shiftKey:"hibari_caremane_normal", facilityId:"hibari", jobType:"caremane", label:"通常"},
   {shiftKey:"link_jimu_somu",      facilityId:"link",   jobType:"jimu",     label:"総務"},
@@ -291,7 +292,14 @@ async function loadRoster(){
   setCount("読み込み中…");
   try{
     const res = await fetch(GAS_URL + "?type=staffAll", {method:"GET"});
-    const data = await res.json();
+    const text = await res.text();
+    const trimmed = (text || "").trim();
+    if (!trimmed || trimmed.charAt(0) === "<") {
+      throw new Error("GASがHTMLを返しました。通信状況・デプロイを確認してください。");
+    }
+    let data;
+    try { data = JSON.parse(trimmed); }
+    catch (_) { throw new Error("応答の解析に失敗しました（JSONではありません）。"); }
     if(!data || data.ok === false){ throw new Error(data && data.error || "取得に失敗しました"); }
     roster = (data.staff || []).map(s => ({ ...s, staffId: normStaffId(s.staffId) }));
     renderList();
@@ -519,7 +527,12 @@ async function save(){
       headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
+    const text = await res.text();
+    const trimmed = (text || "").trim();
+    if (!trimmed || trimmed.charAt(0) === "<") throw new Error("GASがHTMLを返しました");
+    let data;
+    try { data = JSON.parse(trimmed); }
+    catch (_) { throw new Error("応答の解析に失敗しました"); }
     if(!data || data.ok===false){ throw new Error(data && data.error || "保存に失敗しました"); }
     // ローカルの roster も更新（再読込せず即反映）
     if (editingOriginalStaffId && editingOriginalStaffId !== staff.staffId) {
@@ -549,7 +562,12 @@ async function deleteStaff(staffId){
       headers:{"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify({ type:"staffDelete", staffId: id })
     });
-    const data = await res.json();
+    const text = await res.text();
+    const trimmed = (text || "").trim();
+    if (!trimmed || trimmed.charAt(0) === "<") throw new Error("GASがHTMLを返しました");
+    let data;
+    try { data = JSON.parse(trimmed); }
+    catch (_) { throw new Error("応答の解析に失敗しました"); }
     if(!data || data.ok===false){ throw new Error(data && data.error || "削除に失敗しました"); }
     roster = roster.filter(x => normStaffId(x.staffId) !== id);
     renderList();
