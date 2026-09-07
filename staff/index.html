@@ -200,8 +200,8 @@
     <p class="form-err" id="formErr"></p>
 
     <div class="modal-actions">
-      <button id="btnCancel">キャンセル</button>
-      <button class="btn-primary" id="btnSave">保存</button>
+      <button type="button" id="btnCancel">キャンセル</button>
+      <button type="button" class="btn-primary" id="btnSave">保存</button>
     </div>
     <p class="status" id="saveStatus"></p>
   </div>
@@ -508,6 +508,29 @@ function readForm(){
     retiredAt: document.getElementById("f_retiredAt").value || ""
   };
 }
+
+/** 本部アプリの動いている保存と同じ送り方（POST + text/plain + body JSON。?type= は付けない） */
+function gasUrlWithBust(url){
+  const sep = url.indexOf("?") >= 0 ? "&" : "?";
+  return url + sep + "_=" + Date.now();
+}
+async function postToGas(payload){
+  const res = await fetch(gasUrlWithBust(GAS_URL), {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload),
+    redirect: "follow"
+  });
+  const text = await res.text();
+  const trimmed = (text || "").trim();
+  if (!trimmed || trimmed.charAt(0) === "<") throw new Error("GASがHTMLを返しました");
+  let data;
+  try { data = JSON.parse(trimmed); }
+  catch (_) { throw new Error("応答の解析に失敗しました"); }
+  if (!data || data.ok === false) throw new Error(data && data.error || "保存に失敗しました");
+  return data;
+}
+
 async function save(){
   const err = validate();
   if(err){ showFormErr(err); return; }
@@ -524,18 +547,7 @@ async function save(){
     if (editingExisting && editingOriginalStaffId && editingOriginalStaffId !== staff.staffId) {
       payload.originalStaffId = editingOriginalStaffId;
     }
-    const res = await fetch(GAS_URL, {
-      method:"POST",
-      headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify(payload)
-    });
-    const text = await res.text();
-    const trimmed = (text || "").trim();
-    if (!trimmed || trimmed.charAt(0) === "<") throw new Error("GASがHTMLを返しました");
-    let data;
-    try { data = JSON.parse(trimmed); }
-    catch (_) { throw new Error("応答の解析に失敗しました"); }
-    if(!data || data.ok===false){ throw new Error(data && data.error || "保存に失敗しました"); }
+    await postToGas(payload);
     // ローカルの roster も更新（再読込せず即反映）
     if (editingOriginalStaffId && editingOriginalStaffId !== staff.staffId) {
       roster = roster.filter(s => normStaffId(s.staffId) !== editingOriginalStaffId);
@@ -559,18 +571,7 @@ async function deleteStaff(staffId){
   const name = s.name || id;
   if(!confirm(name + " さんを削除しますか？\n\nスプレッドシートから行が完全に削除されます。\n勤務記録は残りますが、この操作は取り消せません。")) return;
   try{
-    const res = await fetch(GAS_URL, {
-      method:"POST",
-      headers:{"Content-Type":"text/plain;charset=utf-8"},
-      body: JSON.stringify({ type:"staffDelete", staffId: id })
-    });
-    const text = await res.text();
-    const trimmed = (text || "").trim();
-    if (!trimmed || trimmed.charAt(0) === "<") throw new Error("GASがHTMLを返しました");
-    let data;
-    try { data = JSON.parse(trimmed); }
-    catch (_) { throw new Error("応答の解析に失敗しました"); }
-    if(!data || data.ok===false){ throw new Error(data && data.error || "削除に失敗しました"); }
+    await postToGas({ type:"staffDelete", staffId: id });
     roster = roster.filter(x => normStaffId(x.staffId) !== id);
     renderList();
   }catch(e){
@@ -621,8 +622,8 @@ document.getElementById("f_active").addEventListener("change", syncRetiredVisibi
 document.getElementById("btnNew").addEventListener("click", openNew);
 document.getElementById("btnReload").addEventListener("click", loadRoster);
 document.getElementById("btnExport").addEventListener("click", exportJson);
-document.getElementById("btnCancel").addEventListener("click", closeOverlay);
-document.getElementById("btnSave").addEventListener("click", save);
+document.getElementById("btnCancel").addEventListener("click", e=>{ e.preventDefault(); closeOverlay(); });
+document.getElementById("btnSave").addEventListener("click", e=>{ e.preventDefault(); save(); });
 document.getElementById("showRetired").addEventListener("change", renderList);
 document.getElementById("facilityFilter").addEventListener("change", renderList);
 // 背景（オーバーレイ）クリックでは閉じない。閉じるのは「キャンセル」ボタンのみ。
