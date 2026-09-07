@@ -502,7 +502,7 @@ const STAFF_CACHE_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
 const FACILITY_SHORT = { all: '全て', nishi: '西', minami: '南', hibari: 'ひばり', link: 'リンク' };
-const JOB_LABELS = { kaigo: '介護職員', kaigo_toku: '介護職員（特）', chori: '調理スタッフ', helper: 'ヘルパー（正）', caremane: 'ケアマネージャー', jimu: '事務スタッフ' };
+const JOB_LABELS = { kaigo: '介護職員', kaigo_toku: '介護職員（特）', chori: '調理スタッフ', helper: 'ヘルパー（正）', caremane: 'ケアマネージャー', jimu: '事務スタッフ', support: 'サポートスタッフ' };
 const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
 const EXPORT_HEADERS = ['氏名', '所属', '職種', '出勤日数', '休出日数', '有休日数', '欠勤日数', '実働合計', '残業合計', '遅早回数', '有給残'];
@@ -536,6 +536,8 @@ const shiftMaster = {
   minami_chori_a:      { shiftKey: 'minami_chori_a',      facilityId: 'minami', jobType: 'chori',    label: '調理A', start: 390,  end: 810,  breakMin: 60,  workMin: 360, order: 1, active: true },
   minami_chori_b:      { shiftKey: 'minami_chori_b',      facilityId: 'minami', jobType: 'chori',    label: '調理B', start: 810,  end: 1110, breakMin: 0,   workMin: 300, order: 2, active: true },
   minami_kaigo_nyuyoku:{ shiftKey: 'minami_kaigo_nyuyoku',facilityId: 'minami', jobType: 'kaigo',    label: '入浴メイン', start: 540,  end: 780,  breakMin: 0,   workMin: 240, order: 5, active: true },
+  minami_support_am:   { shiftKey: 'minami_support_am',   facilityId: 'minami', jobType: 'support',  label: '午前',  start: 510,  end: 810,  breakMin: 0,   workMin: 300, order: 28, active: true },
+  minami_support_pm:   { shiftKey: 'minami_support_pm',   facilityId: 'minami', jobType: 'support',  label: '午後',  start: 780,  end: 1080, breakMin: 0,   workMin: 300, order: 29, active: true },
   hibari_helper_normal:{ shiftKey: 'hibari_helper_normal',facilityId: 'hibari', jobType: 'helper',   label: '通常',  start: 510,  end: 1050, breakMin: 60,  workMin: 480, order: 1, active: true },
   hibari_caremane_normal:{ shiftKey:'hibari_caremane_normal',facilityId:'hibari',jobType:'caremane',label:'通常',  start: 510,  end: 1050, breakMin: 60,  workMin: 480, order: 1, active: true },
   link_jimu_somu:      { shiftKey: 'link_jimu_somu',      facilityId: 'link',   jobType: 'jimu',     label: '総務',  start: 510,  end: 1050, breakMin: 60,  workMin: 480, order: 1, active: true },
