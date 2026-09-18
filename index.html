@@ -493,9 +493,9 @@ const PERSONAL_XLSX_ROW_HEADER = 15;
 const PERSONAL_XLSX_ROW_DATA = 15;
 const PERSONAL_XLSX_ROW_TOTAL = 12.95;
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9adq70lyhyWAanJbZ6jGS3deDbgT2JRCy_fC9c65yAMgEg/exec';
-const GAS_FETCH_TIMEOUT_MS = 45000;
-const GAS_FETCH_RETRIES = 2;
-const RECORDS_CHUNK_DAYS = 7;
+/** 通信の鉄則（消さない）：JSONP禁止・月度1回＋キャッシュ・fetch 8秒×最大3回 */
+const GAS_FETCH_TIMEOUT_MS = 8000;
+const GAS_FETCH_RETRIES = 3;
 const PAID_LEAVE_FETCH_CONCURRENCY = 2;
 const STAFF_CACHE_KEY = 'kinmu_honbu_staff_v1';
 const STAFF_CACHE_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
@@ -1435,61 +1435,12 @@ function gasUrlWithBust(url) {
   return url + sep + '_=' + Date.now();
 }
 
-function fetchGasJsonp(url, label, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const cb = 'kinmuGas_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
-    const fullUrl = gasUrlWithBust(url) + '&callback=' + encodeURIComponent(cb);
-    const script = document.createElement('script');
-    let done = false;
-    function cleanup(err, data) {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      try { delete window[cb]; } catch (_) { window[cb] = undefined; }
-      if (script.parentNode) script.parentNode.removeChild(script);
-      if (err) reject(err);
-      else resolve(data);
-    }
-    const timer = setTimeout(() => {
-      cleanup(new Error(label + '：タイムアウト（' + (timeoutMs / 1000) + '秒）。GASの応答が遅いか、通信を確認してください。'));
-    }, timeoutMs);
-    window[cb] = (data) => {
-      try {
-        cleanup(null, parseGasData(data, label));
-      } catch (e) {
-        cleanup(e);
-      }
-    };
-    script.onerror = () => cleanup(new Error(label + '：JSONP読み込み失敗（GAS再デプロイが必要な場合があります）'));
-    script.src = fullUrl;
-    document.head.appendChild(script);
-  });
-}
-
-function fetchGasXHR(url, label, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const timer = setTimeout(() => {
-      xhr.abort();
-      reject(new Error(label + '：タイムアウト（' + (timeoutMs / 1000) + '秒）。GASの応答が遅いか、通信を確認してください。'));
-    }, timeoutMs);
-    xhr.open('GET', gasUrlWithBust(url), true);
-    xhr.onload = () => {
-      clearTimeout(timer);
-      try {
-        resolve(parseGasResponse({ ok: xhr.status >= 200 && xhr.status < 300 }, xhr.responseText, label));
-      } catch (e) {
-        reject(e);
-      }
-    };
-    xhr.onerror = () => {
-      clearTimeout(timer);
-      reject(new Error(label + '：通信エラー'));
-    };
-    xhr.send();
-  });
-}
-
+/**
+ * GAS 通信（今後の編集で消さない）
+ * - GET/POST とも fetch のみ。JSONP（callback=）と script 読み込みは使わない（ORBでブロックされ30秒待ちになる）。
+ * - タイムアウト 8秒、失敗時リトライ最大3回。
+ * - allRecordsByPeriod は月度 from〜to を1回だけ。期間の細切れ分割はしない。月度キャッシュを使う。
+ */
 async function fetchGasFetch(url, label, timeoutMs, fetchOptions = {}) {
   let lastErr = null;
   for (let attempt = 0; attempt < GAS_FETCH_RETRIES; attempt++) {
@@ -1514,13 +1465,7 @@ async function fetchGasFetch(url, label, timeoutMs, fetchOptions = {}) {
 }
 
 async function fetchGasGet(url, label, timeoutMs = GAS_FETCH_TIMEOUT_MS) {
-  try {
-    return await fetchGasJsonp(url, label, timeoutMs);
-  } catch (_) {}
-  try {
-    return await fetchGasXHR(url, label, timeoutMs);
-  } catch (_) {}
-  return await fetchGasFetch(url, label, timeoutMs);
+  return fetchGasFetch(url, label, timeoutMs);
 }
 
 async function fetchGasPost(body, label) {
@@ -1541,14 +1486,9 @@ async function fetchStaff(force = false) {
 }
 
 async function fetchAllRecordsByPeriod(from, to) {
-  const chunks = dateRangeChunks(from, to, RECORDS_CHUNK_DAYS);
-  const all = [];
-  for (const c of chunks) {
-    const chunkUrl = `${GAS_URL}?type=allRecordsByPeriod&from=${encodeURIComponent(c.from)}&to=${encodeURIComponent(c.to)}`;
-    const data = await fetchGasGet(chunkUrl, '勤務記録の取得（' + c.from + '〜' + c.to + '）');
-    if (Array.isArray(data.records)) all.push(...data.records);
-  }
-  return all;
+  const url = `${GAS_URL}?type=allRecordsByPeriod&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  const data = await fetchGasGet(url, '勤務記録の取得');
+  return Array.isArray(data.records) ? data.records : [];
 }
 
 async function fetchPaidLeaveRecords(from, to) {
@@ -1584,19 +1524,6 @@ async function mapWithConcurrency(items, limit, fn) {
   const n = Math.min(limit, items.length);
   await Promise.all(Array.from({ length: n }, () => worker()));
   return results;
-}
-
-/** from〜to を maxDays 日ごとのチャンクに分割（両端含む） */
-function dateRangeChunks(from, to, maxDays) {
-  const chunks = [];
-  let cur = from;
-  while (cur <= to) {
-    let end = addDays(cur, maxDays - 1);
-    if (end > to) end = to;
-    chunks.push({ from: cur, to: end });
-    cur = addDays(end, 1);
-  }
-  return chunks.length ? chunks : [{ from, to }];
 }
 
 /** 記録の保存・削除など doPost 向け（upsert と同じ送り方） */
@@ -2341,7 +2268,7 @@ async function loadData(forceRefresh = false) {
     }
     const staffList = Object.values(staffMap).filter(s => s.active !== false);
 
-    /* 月度分を週単位で分割取得（一括だと GAS が HTML タイムアウトを返すことがある） */
+    /* 選択中の月度を1回だけ取得（細切れ禁止）。結果は periodDataCache に載せる */
     periodRecords = await fetchAllRecordsByPeriod(period.from, period.to);
 
     const today = todayStr();
