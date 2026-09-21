@@ -66,7 +66,10 @@ tbody tr.sum-row.expanded{background:#f8fcf9}
 .today-date-select{border:2px solid #d8d2ce;border-radius:10px;padding:8px 12px;font-size:.88rem;font-weight:600;font-family:inherit;background:#fff;color:#37322f;min-width:9.5em}
 .today-goto-btn{font-size:.82rem}
 .dup-alert{background:#fcebeb;border:2px solid #e8b4b4;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:.85rem;color:#a32d2d}
-.dup-alert-title{font-weight:700;margin-bottom:6px}
+.dup-alert-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.dup-alert-title{font-weight:700;margin:0}
+.btn-dup-ignore{margin-left:auto;flex:0 0 auto;padding:4px 12px;font-size:.78rem;font-weight:700;font-family:inherit;border:2px solid #c4423a;background:#fff;color:#a32d2d;border-radius:8px;cursor:pointer;white-space:nowrap}
+.btn-dup-ignore:hover{background:#fdf0ef;border-color:#a32d2d}
 .dup-alert ul{margin:0;padding-left:1.2em}
 .dup-alert li{margin:3px 0;line-height:1.5}
 .dup-row,.dup-row td{color:#a32d2d!important;font-weight:600}
@@ -498,6 +501,7 @@ const GAS_FETCH_TIMEOUT_MS = 8000;
 const GAS_FETCH_RETRIES = 3;
 const PAID_LEAVE_FETCH_CONCURRENCY = 2;
 const STAFF_CACHE_KEY = 'kinmu_honbu_staff_v2';
+const DUP_IGNORE_KEY = 'kinmu_honbu_dup_ignore_v1';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
 const FACILITY_SHORT = { all: '全て', nishi: '西', minami: '南', hibari: 'ひばり', link: 'リンク' };
@@ -589,6 +593,8 @@ function detectShiftDuplicates(records) {
     if (group.length <= 1) return;
     const [date, shiftKey] = key.split('|');
     const facilityId = shiftFacility(shiftKey);
+    const recordKeys = group.map(r => recKey(r));
+    const staffIds = group.map(r => normStaffId(r.staffId)).filter(Boolean).sort();
     group.forEach(r => dupRecordKeys.add(recKey(r)));
     alerts.push({
       date,
@@ -596,12 +602,48 @@ function detectShiftDuplicates(records) {
       shiftKey,
       shiftLabel: shiftLabel(shiftKey),
       count: group.length,
-      names: group.map(r => staffName(r.staffId))
+      names: group.map(r => staffName(r.staffId)),
+      staffIds,
+      recordKeys
     });
   });
 
   alerts.sort((a, b) => a.date.localeCompare(b.date) || a.facilityId.localeCompare(b.facilityId));
-  return { dupRecordKeys, alerts };
+  return applyDupIgnore({ dupRecordKeys, alerts });
+}
+
+function dupIgnoreKey(a) {
+  return `${a.date}|${a.shiftKey}|${(a.staffIds || []).join(',')}`;
+}
+
+function readDupIgnoreSet() {
+  try {
+    const raw = localStorage.getItem(DUP_IGNORE_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch (_) {
+    return new Set();
+  }
+}
+
+function writeDupIgnoreSet(set) {
+  try {
+    localStorage.setItem(DUP_IGNORE_KEY, JSON.stringify([...set]));
+  } catch (_) {}
+}
+
+function applyDupIgnore(result) {
+  const ignored = readDupIgnoreSet();
+  const alerts = result.alerts.filter(a => !ignored.has(dupIgnoreKey(a)));
+  const keys = new Set();
+  alerts.forEach(a => (a.recordKeys || []).forEach(k => keys.add(k)));
+  return { dupRecordKeys: keys, alerts };
+}
+
+function ignoreDisplayedDupAlerts(alerts) {
+  const set = readDupIgnoreSet();
+  alerts.forEach(a => set.add(dupIgnoreKey(a)));
+  writeDupIgnoreSet(set);
 }
 
 function filterDupAlerts(alerts) {
@@ -621,7 +663,15 @@ function renderDupAlert(elId, alerts) {
     `${fmtDateWithDow(a.date)} ${facilityLabel(a.facilityId)}：${a.shiftLabel} ${a.count}名（${a.names.map(n => esc(n)).join('、')}）`
   );
   el.style.display = 'block';
-  el.innerHTML = `<div class="dup-alert"><div class="dup-alert-title">⚠ シフト重複（入力ミスの可能性）</div><ul>${lines.map(l => `<li>${l}</li>`).join('')}</ul></div>`;
+  el.innerHTML = `<div class="dup-alert"><div class="dup-alert-head"><div class="dup-alert-title">⚠ シフト重複（入力ミスの可能性）</div><button type="button" class="btn-dup-ignore no-print" data-dup-ignore>無視</button></div><ul>${lines.map(l => `<li>${l}</li>`).join('')}</ul></div>`;
+  const btn = el.querySelector('[data-dup-ignore]');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      ignoreDisplayedDupAlerts(filtered);
+      renderToday();
+      renderSummary();
+    });
+  }
 }
 
 function isDupRecord(rec, dupRecordKeys) {
