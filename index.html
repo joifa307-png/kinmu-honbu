@@ -497,8 +497,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbx24znbj2ThSj41D8mFX9ad
 const GAS_FETCH_TIMEOUT_MS = 8000;
 const GAS_FETCH_RETRIES = 3;
 const PAID_LEAVE_FETCH_CONCURRENCY = 2;
-const STAFF_CACHE_KEY = 'kinmu_honbu_staff_v1';
-const STAFF_CACHE_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+const STAFF_CACHE_KEY = 'kinmu_honbu_staff_v2';
 const FACILITY_LABELS = { nishi: 'おひさま西', minami: '南のおひさま', hibari: 'ヘルパーステーションひばり・居宅ひばり', link: '有限会社リンク' };
 const FACILITY_ORDER = ['nishi', 'minami', 'hibari', 'link'];
 const FACILITY_SHORT = { all: '全て', nishi: '西', minami: '南', hibari: 'ひばり', link: 'リンク' };
@@ -1386,14 +1385,30 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+function staffListToMap(listOrDict) {
+  const map = {};
+  const rows = Array.isArray(listOrDict)
+    ? listOrDict
+    : Object.keys(listOrDict || {}).map(k => listOrDict[k]);
+  rows.forEach(s => {
+    if (!s) return;
+    const id = normStaffId(s.staffId);
+    if (!id) return;
+    const activeRaw = s.active;
+    const active = !(activeRaw === false || String(activeRaw).toUpperCase() === 'FALSE');
+    map[id] = { ...s, staffId: id, active };
+  });
+  return map;
+}
+
 function readStaffCache() {
   try {
     const raw = localStorage.getItem(STAFF_CACHE_KEY);
     if (!raw) return null;
-    const { staff, at } = JSON.parse(raw);
-    if (!staff || typeof staff !== 'object') return null;
-    if (Date.now() - at > STAFF_CACHE_MAX_AGE_MS) return null;
-    return staff;
+    const parsed = JSON.parse(raw);
+    if (!parsed.staff || typeof parsed.staff !== 'object') return null;
+    if (parsed.day !== todayStr()) return null;
+    return staffListToMap(parsed.staff);
   } catch (_) {
     return null;
   }
@@ -1401,8 +1416,17 @@ function readStaffCache() {
 
 function writeStaffCache(staff) {
   try {
-    localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify({ staff, at: Date.now() }));
+    localStorage.setItem(STAFF_CACHE_KEY, JSON.stringify({
+      staff,
+      day: todayStr(),
+      at: Date.now()
+    }));
   } catch (_) {}
+}
+
+function clearStaffCache() {
+  try { localStorage.removeItem(STAFF_CACHE_KEY); } catch (_) {}
+  staffSessionLoaded = false;
 }
 
 function parseGasData(data, label) {
@@ -1480,9 +1504,9 @@ async function fetchStaff(force = false) {
   if (!force && staffSessionLoaded && Object.keys(staffMap).length) {
     return staffMap;
   }
-  const data = await fetchGasGet(`${GAS_URL}?type=staff`, 'スタッフ情報の取得');
+  const data = await fetchGasGet(`${GAS_URL}?type=staffAll`, 'スタッフ情報の取得');
   staffSessionLoaded = true;
-  return data.staff || {};
+  return staffListToMap(data.staff);
 }
 
 async function fetchAllRecordsByPeriod(from, to) {
@@ -1716,7 +1740,7 @@ function fmtOtDisplay(min) {
 
 function buildTodayRows() {
   return recordsForViewDate(todayViewDate)
-    .map(rec => ({ rec, staff: staffMap[rec.staffId] }))
+    .map(rec => ({ rec, staff: staffById(rec.staffId) }))
     .filter(({ staff }) => facilityFilter === 'all' || (staff && staff.facilityId === facilityFilter))
     .sort((a, b) => {
       const fa = FACILITY_ORDER.indexOf(a.staff?.facilityId);
@@ -2253,16 +2277,16 @@ async function loadData(forceRefresh = false) {
   renderSummary();
 
   try {
+    if (forceRefresh) clearStaffCache();
     const cachedStaff = !forceRefresh ? readStaffCache() : null;
     let staff = null;
     if (!forceRefresh && cachedStaff && Object.keys(cachedStaff).length) {
-      // 取得に失敗しても画面を止めないため、まずキャッシュを優先する
       staff = cachedStaff;
       staffMap = staff;
       staffSessionLoaded = true;
-      staffFetchWarning = 'スタッフ情報は端末キャッシュを使用しています（最新取得をスキップ）';
+      staffFetchWarning = 'スタッフ情報は端末キャッシュを使用しています（当日中）';
     } else {
-      staff = await fetchStaff(forceRefresh);
+      staff = await fetchStaff(true);
       writeStaffCache(staff);
       staffMap = staff;
     }
@@ -2615,6 +2639,7 @@ function init() {
   $('btnPrevPeriod').addEventListener('click', () => changePeriod(-1));
   $('btnNextPeriod').addEventListener('click', () => changePeriod(1));
   $('btnReload').addEventListener('click', () => {
+    clearStaffCache();
     clearPeriodDataCache();
     loadData(true);
   });
